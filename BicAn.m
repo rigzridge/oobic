@@ -55,12 +55,14 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-% 7/02/2022 -> Added to "pybic" last night. Weekend was fun! Trying to 
+% 7/05/2022 -> Added to "pybic" last night. Weekend was fun! Trying to 
 % clean up what I have (i.e., a couple to-dos) before I take some vacation
 % time. Should get to line-out and instantaneous freq. stuff today...
 % Added support for more literate "SpecType" inputs ('fft,'wavelet',etc.),
 % implemented cross-bicoherence, and messed with KeyPressFcn of PlotBispec
 % figure so that SHIFT+[B,A,R,I,P] plots b2, abs(B), real/imag(B), biphase.
+% Trying out support for plotting mean and std dev (if calculated); done
+% with cross-spectrum, cross-coherence, etc. Want to do GUIs tomorrow. 
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/02/2022 -> Adjusted "PlotBispec" method to include mean and std dev
 % plots (have not bug-tested this!); wedding this weekend so there might
@@ -98,11 +100,14 @@
 %   the dumb double-check for window stuff.
 % **Try to make anonymous function for t/fscale set methods
 % **Fix multi-time-series input to wavelet spec
-% **Fix input "v" vector! Should be some kind of variable!
+% *_Fix input "v" vector! Should be some kind of variable!
 % **Implement sizewarn
 % **Line-out
 % **Inst. freq/ interpolation
 % *_Cross-bicoherence
+% **set(gcf,'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event)) is
+%   necessary to keep keypresses up-to-date with object...  
+% **Add CalcMean support for cross stuff (just look!)
 
 
 classdef BicAn
@@ -185,7 +190,7 @@ classdef BicAn
         function bic = BicAn(varargin)
         % ------------------
         % Constructor
-        % ------------------         
+        % ------------------  
             if nargin~=0
                 bic = bic.ParseInput(varargin);
                 if bic.RunBicAn
@@ -226,6 +231,15 @@ classdef BicAn
                 bic.Window = 'hann';
             end
         end
+        function bic = set.SpecType(bic,val)
+            switch lower(val)
+                case {'fft','stft','fourier','wave','wavelet','cwt'}
+                    bic.SpecType = val;
+                otherwise
+                    warning('BicAn:specInput','Invalid input!\n%s does not correspond to a type of spectrogram.\nSee "help BicAn"',val); 
+                    bic.SpecType = 'stft';
+            end
+        end
         function bic = set.TScale(bic,val)
             if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
                 bic.TScale = val;
@@ -250,8 +264,8 @@ classdef BicAn
             
             if isnumeric(vars{1})
                 [nrows,ncols] = size(vars{1});   % Get data dimensions
-                if nrows>ncols % Check if column vector
-                    vars{1} = vars{1}.';     % Transpose
+                if nrows>ncols                   % Check if column vector
+                    vars{1} = vars{1}.';         % Transpose
                 end
                 if bic.Nseries>3
                     error('BicAn:Input','Invalid input!\nMaximum time-series is 3...\nSee "help BicAn"'); 
@@ -270,11 +284,11 @@ classdef BicAn
                     bic.FreqRes   = 1/bic.SubInt;     
                     bic.NormToNyq = true;
                 else
-                    error('BicAn:improperInput','\nInput must be BicAn... object or array. "%s" class is not supported.',...
+                    error('BicAn:improperInput','\nInput must be BicAn object or array. "%s" class is not supported.',...
                         class(vars{1}))
                 end
             else
-                fprintf(' Checking inputs...') 
+                fprintf('Checking inputs...') 
                 % Parse user-defined inputs
                 bic.Raw = vars{1};
                 options = fieldnames(bic); % Should I use properties(...) instead?
@@ -285,7 +299,7 @@ classdef BicAn
                             case lower(options)
                                 for j=1:length(options)                       
                                     if isequal(lower(options{j}),lower(vars{i}))
-                                        cl = eval(sprintf('class(bic.%s)',options{j}));                    
+                                        cl = eval(sprintf('class(bic.%s)',options{j}));                   
                                         if isequal(cl,class(vars{i+1}))
                                             eval(sprintf('bic.%s = vars{i+1};',options{j}));
                                         else
@@ -336,19 +350,19 @@ classdef BicAn
         % Main processing loop
         % ------------------
             tic
-            %%%%%bic = bic.ApplyZPad;
-            bic.Processed = bic.Raw;
+            bic = bic.ApplyZPad;
+            %bic.Processed = bic.Raw;
             switch lower(bic.SpecType)
                 case {'fft','stft','fourier'}
                     bic = bic.SpectroSTFT;
+                    bic.SpecType = 'stft';
                 case {'wave','wavelet','cwt'}
                     bic = bic.SpectroWavelet;
-                otherwise
-                    error('Bispec:specInput','Invalid input!\n%s does not correspond to a type of spectrogram.\nSee "help BicAn"',bic.SpecType); 
-            end
-            
+                    bic.SpecType = 'wave';
+            end        
             if ~bic.JustSpec
                 bic = bic.Bicoherence;
+                %bic = bic.CalcMean(15);
                 h = figure('WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event));
                 bic.PlotBispec;
             end            
@@ -367,27 +381,34 @@ classdef BicAn
         % ------------------
             fS   = 200;
             tend = 100;
+            noisy = 2;
             switch lower(in)
+                case 'classic'
+                    [inData,t] = bic.SignalGen(fS,tend,1,45,6,1,22,10,1,1/20,noisy);
                 case 'tone'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,0.25);
+                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,noisy);
                 case 'noisy'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,2);
+                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,5*noisy);
                 case '2tone'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,0,0,0,0.25);
+                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,0,0,0,noisy);
                 case '3tone'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,0,1,0,0.25);
+                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,0,1,0,noisy);
                 case 'line'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,10,1,1/20,0.25);
+                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,10,1,1/20,noisy);
                 case 'circle'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,10,1,45,10,1,1/20,0.25);
+                    [inData,t] = bic.SignalGen(fS,tend,1,22,10,1,45,10,1,1/20,noisy);
+                case 'cross_2tone'
+                    [x,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,noisy);
+                    y     = bic.SignalGen(fS,tend,1,45,0,0,0,0,0,0,noisy);
+                    inData = [x; y]; 
                 case 'cross_3tone'
-                    [x,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,0);
-                    y     = bic.SignalGen(fS,tend,1,45,0,0,0,0,0,0,0);
-                    z     = bic.SignalGen(fS,tend,1,67,0,0,0,0,0,0,0);
+                    [x,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,noisy);
+                    y     = bic.SignalGen(fS,tend,1,45,0,0,0,0,0,0,noisy);
+                    z     = bic.SignalGen(fS,tend,1,67,0,0,0,0,0,0,noisy);
                     inData = [x; y; z]; 
                 case 'cross_circle'
-                    [x,t] = bic.SignalGen(fS,tend,1,22,10,0,0,0,0,1/20,0);
-                    y     = bic.SignalGen(fS,tend,1,45,10,0,0,0,0,1/20,0);
+                    [x,t] = bic.SignalGen(fS,tend,1,22,10,0,0,0,0,1/20,noisy);
+                    y     = bic.SignalGen(fS,tend,1,45,10,0,0,0,0,1/20,noisy);
                     z     = x.*y;
                     inData = [x; y; z]; 
                 otherwise
@@ -453,7 +474,7 @@ classdef BicAn
             B    = zeros(limy,limx);
             b2   = zeros(limy,limx);
             
-            fprintf(' Working...      ')     
+            fprintf('Working...      ')     
             for j=1:limy
                 LoadBar(j,limy);
                 for k=j:limx-j+1
@@ -503,7 +524,7 @@ classdef BicAn
                     dum = sqrt(bic.sb);
                     cbarstr = '\sigma_{b^2}(f_1,f_2)';
             end
-            
+
             if bic.Nseries==1
                 f = bic.fv/10^bic.FScale;
                 imagesc(f,f/2,dum) 
@@ -526,23 +547,35 @@ classdef BicAn
         % ------------------
         % Cross-spectrum/coh
         % ------------------
-
+            if bic.Nseries~=2
+                error('BicAn:crossSpec','\nCross-coherence requires exactly 2 signals!');
+            else
+                [cspec,crosscoh,coh] = bic.SpecToCoherence(bic.sg,bic.LilGuy);
+                bic.cs = cspec;
+                bic.xc = crosscoh;
+                bic.xs = coh;           
+            end
         end % Coherence
 
         function bic = Bicoherence(bic)
         % ------------------
         % Calculate bicoherence
         % ------------------
+            WTrim = 50*2;
+            dum = bic.sg; 
+            if isequal(bic.SpecType,'wave')
+                dum = bic.sg(:,WTrim:end-WTrim,:); 
+            end
             if bic.Nseries==1
                 v = [1 1 1];
-                [b2,B] = bic.SpecToBispec(bic.sg,v,bic.LilGuy);
+                [b2,B] = bic.SpecToBispec(dum,v,bic.LilGuy);
             else
                 if bic.Nseries==2
                     v = [1 2 2];
                 else
                     v = [1 2 3];
                 end
-                [b2,B] = bic.SpecToCrossBispec(bic.sg,v,bic.LilGuy);
+                [b2,B] = bic.SpecToCrossBispec(dum,v,bic.LilGuy);
                 bic.ff = [-bic.fv(end:-1:2) bic.fv];
             end
 
@@ -649,7 +682,7 @@ classdef BicAn
         % - - - - - - - - 
             press = event.Character;
             switch press
-                case {'B','A','R','I','P'}
+                case {'B','A','R','I','P','M','S'}
                     if isequal(press,'B') 
                         bic.PlotType = 'bicoh';
                     elseif isequal(press,'A') 
@@ -680,7 +713,7 @@ classdef BicAn
         % ------------------
         % Remove linear trend
         % ------------------
-           fprintf(' Applying detrend...') 
+           fprintf('Applying detrend...') 
            n = length(y);
            s = (6/(n*(n^2-1)))*(2*sum((1:n).*y) - sum(y)*(n+1));
            % Convenient form assuming x = 1:n
@@ -802,6 +835,20 @@ classdef BicAn
             B = B/length(Bi);
         end
         
+        function [cs,cc,xx] = SpecToCoherence(spec,lilguy)
+        % ------------------
+        % Cross-spectrum, cross-coherence, coherogram
+        % ------------------
+            C = conj(spec(:,:,1)).*spec(:,:,2);
+            N1 = mean( (abs(spec(:,:,1)).^2)' );
+            N2 = mean( (abs(spec(:,:,2)).^2)' );
+            
+            cs = C;
+            cc = abs( mean(C.') ).^2;
+            cc = cc./(N1.*N2);
+
+            xx = (abs(C).^2) ./ ( (abs(spec(:,:,1)).^2) .* (abs(spec(:,:,2)).^2) + lilguy );
+        end % SpecToCoherence
 
         function win = HannWindow(N)
         % ------------------
@@ -809,8 +856,7 @@ classdef BicAn
         % ------------------
            win = sin(pi*(0:N-1)/(N-1)).^2;
         end % HannWindow
-        
-        
+                
         function [sig,t] = SignalGen(fS,tend,Ax,fx,Afx,Ay,fy,Afy,Az,Ff,noisy)
         % ------------------
         % Provides 3-osc FM test signal
@@ -844,8 +890,7 @@ classdef BicAn
             sig = x + y + z + noisy*(0.5*rand(1,length(t)) - 1);
 
         end % SignalGen
-        
-       
+             
         function PlotLabels(strings,fsize,cbarNorth)
         % ------------------
         % Convenience function
@@ -902,7 +947,7 @@ classdef BicAn
                 win = sin(pi*(0:nfreq-1)/(nfreq-1)).^2; % Apply Hann window
             end
             
-            fprintf(' Applying STFT...      ')
+            fprintf('Applying STFT...      ')
             
             for m=1:M
                 LoadBar(m,M);
@@ -961,7 +1006,7 @@ classdef BicAn
             Psi = @(a) (pi^0.25)*sqrt(2*sigma/a) .*...
                 exp( -2 * pi^2 * sigma^2 * ( freq_vec/a - f0).^2 );
 
-            fprintf(' Applying CWT...      ')
+            fprintf('Applying CWT...      ')
             for a=1:nyq  
                 LoadBar(a,nyq);
                 % Apply for each scale (read: frequency)
@@ -973,20 +1018,20 @@ classdef BicAn
         
         end % ApplyCWT
         
-        
         function bic = RunDemo
         % ------------------
         % Demonstration
         % ------------------
             bic = BicAn;
-            [x,t,fS] = bic.TestSignal('circle');
-            %N = 512*2;
+            [x,t,fS] = bic.TestSignal('cross_3tone');
+            %N = 512*1;
             N = length(t);
             x = x(:,1:N);
             dT = t(N)-t(1);
             bic = BicAn(x,'sigma',dT*5,...
                             'spectype','stft',...
                             'sizewarn',false,...
+                            'verbose',false,...
                             'samprate',fS,...
                             'justspec',~true,...
                             'plottype','bicoh');
