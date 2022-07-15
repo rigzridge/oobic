@@ -65,7 +65,14 @@
 % 7/11/2022 -> Tried lke hell to dynamically adjust colorbar's height/width
 % to save some space in GUI... absolute catastrophe. Also, I realize now
 % that the callbacks for the GUI figure will either have to be updated as
-% the object's data is changed, or I'll need a new fucking idea.
+% the object's data is changed, or I'll need a new f^*%ing idea. [...]
+% Okay, so I've calmed down and thought about it! The real question is why
+% are we worried about having the callbacks be methods (static or not)? Why
+% not treat it like a regular GUI and just get/set our way there? So that's
+% what I've done! PlotPointOut() has been completely rewritten to either
+% plot probability density [PlotType='bicoh'] or line-outs of time [else].
+% Condensed the guts of many set.Methods into a single subfunction. =^] 
+% Debugging time/freq-scaling issues with GUI and sitch. Added auto sigma.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/10/2022 -> Working on GUI stuff... Real slog
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -164,9 +171,10 @@ classdef BicAn
     end
     
     % Private
-    properties (Access=public)
+    properties (Access=private)
         InGUI     = false;
         RunBicAn  = false;
+        IsPlaying = false;
         NormToNyq = false;
         Nseries   = [];
         WinVec    = [];
@@ -186,7 +194,7 @@ classdef BicAn
         SubInt    = 512;
         Step      = 128;
         Window    = 'hann';       
-        Sigma     = 1;
+        Sigma     = 0;
         JustSpec  = false;
         SpecType  = 'stft';
         ErrLim    = inf;
@@ -202,7 +210,7 @@ classdef BicAn
         CbarNorth = true;
         PlotType  = 'bicoh';
         ScaleAxes = 'manual';
-        Verbose   = true;
+        Verbose   = false;
         Detrend   = false;
         ZPad      = false;
         Cross     = false;
@@ -211,7 +219,6 @@ classdef BicAn
         PlotSlice = 0; 
         
         TBHands   = [];
-        IsPlaying = false;
         
         tv = []; % Time vector
         fv = []; % Frequency vector
@@ -258,7 +265,7 @@ classdef BicAn
             [val,~] = size(bic.Raw);
         end
         function val = get.Samples(bic)     % Samples in data
-            val = (~isempty(bic.Processed))*length(bic.Processed) + isempty(bic.Processed)*length(bic.Raw)
+            val = (~isempty(bic.Processed))*length(bic.Processed) + isempty(bic.Processed)*length(bic.Raw);
         end
         function val = get.LineColor(bic)   % For coloring plots
             val = eval(sprintf('%s(256)',bic.CMap)); 
@@ -292,13 +299,13 @@ classdef BicAn
             end
         end
         function bic = set.SpecType(bic,val)% Checks for spectrogram choice
-            switch lower(val)
-                case {'fft','stft','fourier','wave','wavelet','cwt'}
-                    bic.SpecType = val;
-                otherwise
-                    warning('BicAn:specInput','Invalid input!\n%s does not correspond to a type of spectrogram.\nSee "help BicAn"',val); 
-                    bic.SpecType = 'stft';
-            end
+            opts = {'fft ','stft ','fourier ','wave ','wavelet ','cwt '};
+            bic.SpecType = CheckInString(bic.SpecType,val,opts);
+            
+        end
+        function bic = set.PlotType(bic,val)% Checks for plotter choice
+            opts = {'bicoh ','abs ','real ','imag ','angle ','mean ','std '};
+            bic.PlotType = CheckInString(bic.PlotType,val,opts);
         end
         function bic = set.TScale(bic,val)  % Checks for time-scaling
             bic.TScale = CheckScales(bic.TScale,val);
@@ -400,6 +407,9 @@ classdef BicAn
                     bic = bic.SpectroSTFT;
                     bic.SpecType = 'stft';
                 case {'wave','wavelet','cwt'}
+                    if bic.Sigma==0
+                       bic.Sigma = 5*bic.Samples/bic.SampRate; 
+                    end
                     bic = bic.SpectroWavelet;
                     bic.SpecType = 'wave';
             end        
@@ -413,9 +423,7 @@ classdef BicAn
             end       
 
             if bic.PlotIt       
-                bic.Note = 'Testing, bitch!';
-                
-                bic.DumGUI
+                bic = bic.PlotGUI;
             end
 
         end % ProcessData
@@ -425,7 +433,7 @@ classdef BicAn
         % ------------------
         % Provides FM test signal
         % ------------------
-            fS   = 400;
+            fS   = 200;
             tend = 100;
             noisy = 2;
             switch lower(in)
@@ -507,7 +515,7 @@ classdef BicAn
                 [CWT(:,:,k),f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
             end
 
-            bic.tv = t;
+            bic.tv = t + bic.TZero;
             bic.fv = f;
             bic.ft = mean(abs(CWT'));    
             bic.sg = CWT;
@@ -583,6 +591,31 @@ classdef BicAn
             bic.mb = bic.mb/Ntrials;
             bic.sb = sqrt(bic.sb/(Ntrials-1));
         end % CalcMean
+        
+        
+        function PlotPowerSpec(bic)
+        % ------------------
+        % Plot power spectrum
+        % ------------------
+            if bic.PlotSlice~=0
+                dum = abs(bic.sg(:,bic.PlotSlice,:).').^2;
+            else
+                dum = bic.ft;
+            end
+        
+            for k=1:bic.Nseries
+                semilogy(bic.fv/10^bic.FScale,dum(k,:),'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
+                if k==1; hold on; end
+            end
+            hold off
+            %ylim([1e-10 1e1]) %%%%%%%%%
+            xlim([bic.fv(1)/10^bic.FScale bic.fv(end)/10^bic.FScale])
+            grid on
+            
+            %set(gca,'xticklabels',linspace(bic.fv(1),bic.fv(end)+bic.fv(1),6));
+            fstr = sprintf('f_n [%sHz]',bic.ScaleToString(bic.FScale));
+            bic.PlotLabels({fstr,'|P| [arb.]'},bic.FontSize,bic.CbarNorth);
+        end % PlotPowerSpec
 
 
         function PlotSpectro(bic)
@@ -643,6 +676,7 @@ classdef BicAn
                 case {'abs','real','imag','angle'}
                     dum = eval(sprintf('%s(bic.bs)',guy));
                     cbarstr = sprintf('%s%s B(f_1,f_2)',upper(guy(1)),guy(2:end));
+                    if isequal(guy,'angle'); cbarstr = '\beta(f_1,f_2)'; end
                 case 'mean'
                     dum = bic.mb;
                     cbarstr = '\langleb^2(f_1,f_2)\rangle';
@@ -668,28 +702,6 @@ classdef BicAn
             bic.bc       = old_dats;
             bic.PlotType = old_plot;
         end % PlotConfidence
-        
-        
-        function PlotPowerSpec(bic)
-        % ------------------
-        % Plot power spectrum
-        % ------------------
-            if bic.PlotSlice~=0
-                dum = abs(bic.sg(:,bic.PlotSlice,:).').^2;
-            else
-                dum = bic.ft;
-            end
-        
-            for k=1:bic.Nseries
-                semilogy(bic.fv,dum(k,:),'linewidth',bic.LineWidth,'color',bic.LineColor(70+40*k,:))
-                if k==1; hold on; end
-            end
-            hold off
-            grid on
-            %set(gca,'xticklabels',linspace(bic.fv(1),bic.fv(end)+bic.fv(1),6));
-            fstr = sprintf('f [%sHz]',bic.ScaleToString(bic.FScale));
-            bic.PlotLabels({fstr,'|P| [arb.]'},bic.FontSize,bic.CbarNorth);
-        end % PlotPowerSpec
 
 
         function PlotPointOut(bic,X,Y)
@@ -697,51 +709,93 @@ classdef BicAn
         % Plot value of b^2 over time
         % ------------------
             figure %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            
+            [~,ystr] = bic.WhichPlot; 
+            
             v = [1 1 1];
-            pntstr = cell(1,length(X));
-            dum = bic.fv;
+            dum = bic.fv/10^bic.FScale;
             if bic.Nseries>1
-                dum = bic.ff;
+                dum = bic.ff/10^bic.FScale;
                 crossplot = true;
             end
-            for k=1:length(X)
-                [b2,B,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(k),X(k),false);
-                %plot(unwrap(angle(Bi))/pi,'o')
-                semilogy(bic.tv,abs(Bi),'linewidth',bic.LineWidth,'color',bic.LineColor(70+20*k,:))
-                ylim([1e-10 1e0])
-                %axis tight
-                if k==1; hold on; end
-                pntstr{k} = sprintf('(%3.3f,%3.3f) %sHz',dum(X(k)),dum(Y(k)),bic.ScaleToString(bic.FScale));
-            end            
-            hold off
-            grid on
             
-            legend(pntstr)
-            
-            tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.FScale));
-            [~,ystr] = bic.WhichPlot; 
-            bic.PlotLabels({tstr,ystr},bic.FontSize,bic.CbarNorth);
-           
-            %text(0.5,0.5,pntstr,'fontsize',bic.FontSize)
+            if isequal(bic.PlotType,'bicoh')
+                
+                Ntrials = 1000; 
+                g = zeros(1,Ntrials);
+                
+                for k=1:Ntrials
+                    [g(k),~,~] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(1),X(1),true);
+                end
+                
+                % Limit b^2, create vector, and produce histogram 
+                b2lim = 0.2;
+                b2vec = linspace(0,b2lim,1000);
+                cnt = hist(g,b2vec);
+
+                % Integrate count
+                intcnt = sum(cnt)*(b2vec(2)-b2vec(1));
+                % exp dist -> (1/m)exp(-x/m)
+                m = mean(g);
+                plot(b2vec,cnt/intcnt,'linewidth',bic.LineWidth,'color',bic.LineColor(110,:))
+                hold on
+                plot(b2vec,(1/m)*exp(-b2vec/m).*(1-b2vec),'linewidth',bic.LineWidth,'color','red'); 
+
+                xstr = sprintf('(%3.1f,%3.1f) %sHz',dum(X(1)),dum(Y(1)),bic.ScaleToString(bic.FScale));
+                bic.PlotLabels({['b^2' xstr],'Probability density'},bic.FontSize,bic.CbarNorth);
+                grid on
+                legend('randomized','(1/\mu)e^{-b^2/\mu}')
+                
+            else
+
+                pntstr = cell(1,length(X));
+                dumt = bic.tv/10^bic.FScale;
+                for k=1:length(X)
+                    
+                    % Calculate "point-out"
+                    [~,~,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(k),X(k),false);
+                    
+                    switch bic.PlotType
+                        case {'abs','imag','real'}
+                            umm = eval(sprintf('%s(Bi)',bic.PlotType));
+                            if isequal(bic.PlotType,'abs')
+                                semilogy(dumt,umm,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
+                            else
+                                plot(dumt,umm,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
+                            end
+                        case 'angle'
+                            plot(dumt,unwrap(angle(Bi))/pi,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:),...
+                                'linestyle','-.','marker','x')
+                    end
+                    if k==1; hold on; end
+                    pntstr{k} = sprintf('(%3.2f,%3.2f) %sHz',dum(X(k)),dum(Y(k)),bic.ScaleToString(bic.FScale));
+                end            
+                hold off
+                xlim([dumt(1) dumt(end)])
+                grid on
+                
+
+                tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.TScale));
+                bic.PlotLabels({tstr,ystr},bic.FontSize,bic.CbarNorth);
+
+                legend(pntstr,'fontsize',14,'fontweight','bold')                
+            end
         end % PlotPointOut
-
-
+        
+        
         function bic = PlotGUI(bic)
-        % ------------------
-        % Convenience
-        % ------------------
-            bic.Figure = figure('Position',[100 100 1000 600],...
-                'Resize','off',...
-                'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event),...
-                'WindowButtonDownFcn',@(src,event)ClickBispec(bic,event));
-                %'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event),...
-                %'WindowButtonDownFcn',@(src,event)ClickBispec(bic,event));   
+            
+            h = figure('Position',[100 0 800 600],...
+                'Resize','on',...
+                'WindowKeyPressFcn',@SwitchPlot,...
+                'WindowButtonDownFcn',@ClickBispec);
+            
             bic.Axes = axes('DataAspectRatio',[1 1 1],...
                 'XLimMode','manual','YLimMode','manual',...
                 'DrawMode','fast',...
-                'Parent',bic.Figure);
+                'Parent',h);
             bic.Slider = uicontrol('Style','slider',...
-                'Parent',bic.Figure,...
+                'Parent',h,...
                 'Max',1,...
                 'Min',0,...
                 'Value',0,...
@@ -750,59 +804,29 @@ classdef BicAn
                 'Position',[.95 .1 .02 .2],...
                 'SliderStep',[.01 .10]); %,...               
                 %'Callback',@(src,event)slider_cb(pss));
-                
-            % Create the toolbar
-            th = uitoolbar(bic.Figure);
-
-            % Add a push tool to the toolbar
-            a = .20:.05:0.95;
-            img1(:,:,1) = repmat(a,16,1)';
-            img1(:,:,2) = repmat(a,16,1);
-            img1(:,:,3) = repmat(flipdim(a,2),16,1);
-            
-            pth = uipushtool(th,'CData',img1,...
-                       'TooltipString','My push tool',...
-                       'HandleVisibility','off');
-            % Add a toggle tool to the toolbar
-            img2 = rand(16,16,3);
-            tth = uitoggletool(th,'CData',img2,'Separator','on',...          
-                                'TooltipString','Your toggle tool',...
-                                'HandleVisibility','off',...
-                                'ClickedCallback',@(src,event)Dum(bic,event));
-                            
-            bic.TBHands = [pth, tth];
-            
-            bic.RefreshGUI;       
-            bic.InGUI = true;
-                
-            %h = figure('position',[100 100 600 600])
-            %a1 = axes('position',[0.1 0.1 0.4 0.4])
-            %a2 = axes('position',[0.5 0.5 0.4 0.4])                    
-        end % PlotGUI
-        
-        
-        function DumGUI(bic)
-            
-            h = figure('Position',[100 0 600 600],...
-                'Resize','on',...
-                'WindowKeyPressFcn',@SwitchPlot,...
-                'WindowButtonDownFcn',@ClickBispec);
             
             th = uitoolbar(h);
-            
+            % Push buttons on toolbar
             img1 = rand(16,16,3);
-            pth = uipushtool(th,'CData',img1,...
+            pth1 = uipushtool(th,'CData',img1,...
                        'TooltipString','My push tool',...
                        'HandleVisibility','off');
-            % Add a toggle tool to the toolbar
+                   
             img2 = rand(16,16,3);
-            tth = uitoggletool(th,'CData',img2,'Separator','on',...          
+            pth2 = uipushtool(th,'CData',img2,...
+                       'TooltipString','CalcMean()',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@CalcMeanButton);
+                   
+            % Add a toggle tool to the toolbar
+            img3 = rand(16,16,3);
+            tth = uitoggletool(th,'CData',img3,'Separator','on',...          
                                 'TooltipString','Play',...
                                 'HandleVisibility','off',...
                                 'OnCallback',@PlayButton,...
                                 'OffCallback',@PauseButton);
                             
-            bic.TBHands = [th, pth, tth];
+            bic.TBHands = [th, pth1, pth2, tth];
             
             bic.RefreshGUI;       
             bic.InGUI = true;
@@ -818,27 +842,30 @@ classdef BicAn
             %%%%%%%%   clf
             ax(1) = subplot(2,2,[1 3]);
                 bic.PlotBispec;
-                set(ax(1),'position',[ 0.1 0.1 0.4 0.7]);
-                
-            ax(2) = subplot(2,2,2);
-            
-                %dum = get(ax(2),'position');
-                
-                bic.PlotSpectro;     
+                set(ax(1),'outerposition',[ 0 0 0.5 1 ]);
                 
                 if bic.PlotSlice~=0
                     m = bic.PlotSlice;
-                    dt = bic.SubInt/bic.SampRate;
-                    line([bic.tv(m),bic.tv(m)],[0,bic.fv(end)],'color','white','linewidth',2)
-                    line([bic.tv(m)+dt,bic.tv(m)+dt],[0,bic.fv(end)],'color','white','linewidth',2)
+                    dum = bic.tv/10^bic.TScale;
+                    tstr = sprintf('t = %6.4g %ss',dum(m),bic.ScaleToString(bic.TScale));
+                    text(0.05,0.95,tstr,'units','normalized','fontsize',14,...
+                                        'fontweight','bold','color','white')
                 end
                 
-                %set(ax(2),'position',dum);
-                set(ax(2),'position',[ 0.65 0.5 0.30 0.3]);
+            ax(2) = subplot(2,2,2);
+                
+                bic.PlotSpectro;           
+                if bic.PlotSlice~=0
+                    %m = bic.PlotSlice;
+                    dt = bic.SubInt/bic.SampRate/10^bic.TScale;
+                    line([dum(m),dum(m)],[0,dum(end)],'color','white','linewidth',2)
+                    line([dum(m)+dt,dum(m)+dt],[0,dum(end)],'color','white','linewidth',2)
+                end
+                set(ax(2),'outerposition',[ 0.5 0.5 0.5 0.5 ]);
                 
             ax(3) = subplot(2,2,4);
                 bic.PlotPowerSpec;    
-                set(ax(3),'position',[ 0.65 0.1 0.30 0.25]);
+                set(ax(3),'outerposition',[ 0.5 0 0.5 0.5 ]);
                 
             tags = {'bispec','spectro','fft'};
             for k=1:3
@@ -852,7 +879,6 @@ classdef BicAn
         % Callback for clicks
         % ------------------
             fprintf('Note during callback = "%s"\n',bic.Note)
-            bic.CMap = 'cmr';
             for m=1:2:100
                 bic.PlotSlice = m;
                 bic.RefreshGUI;
@@ -1268,6 +1294,18 @@ function out = CheckScales(inscale,val)
     end   
 end
 
+function out = CheckInString(intype,val,opts)
+    switch deblank(lower(val))
+        case deblank(lower(opts))
+            out = val;
+        otherwise
+            warning('BicAn:stringInput','Invalid input!\n%s does not correspond to an option.',val); 
+            disp('Valid are:')
+            disp(char(opts))
+            out = intype;
+    end
+end
+
 function SwitchPlot(obj,event)
 % For changing desired plottable
 % - - - - - - - - 
@@ -1308,9 +1346,10 @@ function ClickBispec(obj,~)
     bic = get(obj,'UserData');
     switch get(gca,'Tag')
         case 'spectro'
-            P = get(gca,'CurrentPoint');     % Get point of mouse click    
-            if P(1,1)>=bic.tv(1) && P(1,1)<=bic.tv(end)
-                [~,m] = min(abs(bic.tv-P(1,1))); % Find closest point in time
+            P = get(gca,'CurrentPoint');     % Get point of mouse click  
+            dum = bic.tv/10^bic.TScale;
+            if P(1,1)>=dum(1) && P(1,1)<=dum(end)
+                [~,m] = min(abs(dum-P(1,1))); % Find closest point in time
                 bic.PlotSlice = m;
                 bic.RefreshGUI;
             else
@@ -1323,9 +1362,9 @@ function ClickBispec(obj,~)
             button = 0;
             X = []; Y = [];
             ClickLim = 5;
-            dum = bic.fv;
+            dum = bic.fv/10^bic.FScale;
             if bic.Nseries>1
-                dum = bic.ff;
+                dum = bic.ff/10^bic.FScale;
                 % Need to subtract something from index now!!!!
             end
             while button~=3 && length(X)<ClickLim
@@ -1361,7 +1400,7 @@ function PlayButton(~,~)
     while bic.IsPlaying
         bic = get(gcbf,'UserData');
         
-        bic.PlotSlice = mod(bic.PlotSlice+20,M)+1;
+        bic.PlotSlice = mod(bic.PlotSlice+10,M)+1;
         bic.RefreshGUI;
     
         set(gcbf,'UserData',bic);
@@ -1378,4 +1417,16 @@ function PauseButton(~,~)
     bic.IsPlaying = false;
     set(gcbf,'UserData',bic);
 end
+
+
+function CalcMeanButton(~,~)
+% ------------------
+% Callback for play
+% ------------------
+    bic = get(gcbf,'UserData');
+    bic = bic.CalcMean(5);
+    set(gcbf,'UserData',bic);
+end
+
+
 
