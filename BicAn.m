@@ -60,6 +60,8 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/14/2022 -> Added a bunch of toolbar icons as PNGs (16x16x3).  
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/13/2022 -> Small tweak here and there; cross-coherence in main loop.
 % Fixed error in TestSignal('cross_circle'), and fiddled with power-spec
 % axes limits. Benchmarked against old code (v3.1) on DIII-D data. 
@@ -158,6 +160,10 @@
 % **Can colorbars be resized without weirdness?
 % **Why worry about class=BicAn inputs? Isn't that the point of OOP?
 % __Line-drawing issue with CWTs
+% **Domain coloring for complex plots? 
+% **Add time-selection if time vector given
+% **Phasor diagram of biphase
+% **Print default value when parsing!
 
 % KNOWN BUGS!
 % -> If data has not been created (bic.mb, say), then using PlotBispec()
@@ -411,7 +417,7 @@ classdef BicAn
                                         if isequal(cl,class(vars{i+1}))
                                             eval(sprintf('bic.%s = vars{i+1};',options{j}));
                                         else
-                                            warning('BicAn:errOption','\n"%s" must be a %s... Using default value.',...
+                                            warning('BicAn:errOption','\n"%s" must be a %s... Using default value ().',...
                                                         vars{i},cl)
                                         end
                                     end
@@ -776,6 +782,8 @@ classdef BicAn
             else 
                 f = bic.ff/10^bic.FScale;
                 imagesc(f,f,dum) 
+                line([0 f(end)],[f(end) 0],     'linewidth',2.5,'color',0.5*[1 1 1])
+                line([f(1) 0],[0 f(1)],     'linewidth',2.5,'color',0.5*[1 1 1])
             end
             
             fstr1 = sprintf('f_1 [%sHz]',bic.ScaleToString(bic.FScale));
@@ -928,8 +936,8 @@ classdef BicAn
                 'WindowButtonDownFcn',@ClickPlot,...
                 'DeleteFcn',@KillPlot);
             
-            ax1 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0   0   0.5 1 ]);
-            ax2 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0.5 0.5 0.5 0.5 ]);
+            ax1 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0   0   0.5 0.95 ]);
+            ax2 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0.5 0.5 0.5 0.45 ]);
             ax3 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0.5 0   0.5 0.5 ]);
             
             bic.Slider = uicontrol('Style','slider',...
@@ -942,30 +950,104 @@ classdef BicAn
                 'Position',[.95 .1 .02 .2],...
                 'SliderStep',[.01 .10]); %,...               
                 %'Callback',@(src,event)slider_cb(pss));
+                
+            %%% Toolbar
+            % Play/Pause
+            % CalcMean()
+            % Save to workspace
+            % New input
+            % Plot data
+            % Interpolate
+            
+            
+            % Bispectrogram
+            
             
             th = uitoolbar(bic.Figure);
             % Push buttons on toolbar
-            img1 = rand(16,16,3);
-            pth1 = uipushtool(th,'CData',img1,...
-                       'TooltipString','My push tool',...
+            
+            % Thug Life
+            im = load('assets/test_pic1.mat');
+            pth1a = uipushtool(th,'CData',im.M,...
+                       'TooltipString','Boom!',...
                        'HandleVisibility','off');
-                   
-            img2 = rand(16,16,3);
-            pth2 = uipushtool(th,'CData',img2,...
-                       'TooltipString','CalcMean()',...
+            % Credits
+            im = load('assets/test_pic3.mat');
+            pth1b = uipushtool(th,'CData',im.M,...
+                       'TooltipString','Credits?',...
+                       'HandleVisibility','off'); 
+            % CalcMean()
+            im = importdata('assets/CalcMean.png');
+            pth2 = uipushtool(th,'CData',im.cdata,'Separator','on',...
+                       'TooltipString','Calculate <b^2>',...
                        'HandleVisibility','off',...
                        'ClickedCallback',@CalcMeanButton);
-                   
-            % Add a toggle tool to the toolbar
-            img3 = rand(16,16,3);
-            tth = uitoggletool(th,'CData',img3,'Separator','on',...          
+            % SaveToWorkspace
+            im = importdata('assets/SaveToWorkspace.png');
+            pth3 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Save to workspace',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@CalcMeanButton);
+            % NewInput
+            im = importdata('assets/NewInput.png');
+            pth4 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','New inputs',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@InputButton);
+            % PlotData
+            im = importdata('assets/PlotData.png');
+            pth5 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Plot input data',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@PlotButton);
+            % Interpolate
+            im = importdata('assets/Interpolate.png');
+            pth6 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Interpolate subinterval',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@InterpButton);
+            % Bullseye
+            im = importdata('assets/Bullseye.png');
+            pth7 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Inspect point',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@InspectButton);
+            % ConfidenceInterval
+            im = importdata('assets/ConfidenceInterval.png');
+            pth8 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Show noise floor',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@ConfIntButton);
+            % BicOfTime
+            im = importdata('assets/BicOfTime.png');
+            pth9 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Show bispectral evolution',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@CalcMeanButton); 
+            % Play/Pause
+            im = load('assets/test_pic2.mat');
+            tth = uitoggletool(th,'CData',im.M,'Separator','on',...          
                                 'TooltipString','Play',...
                                 'HandleVisibility','off',...
                                 'OnCallback',@PlayButton,...
                                 'OffCallback',@PauseButton);
+            % MakeMovie
+            im = importdata('assets/MakeMovie1.png');
+            pth10 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Output video',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@CalcMeanButton);
+            % SelectInterval
+            im = importdata('assets/SelectInterval2.png');
+            pth11 = uipushtool(th,'CData',im.cdata,...
+                       'TooltipString','Select time limits',...
+                       'HandleVisibility','off',...
+                       'ClickedCallback',@CalcMeanButton);
+                   
                             
             bic.AxHands = [ax1, ax2, ax3];
-            bic.TBHands = [th, pth1, pth2, tth];
+            bic.TBHands = [th, pth1a, pth1b, pth2, pth3, pth4, pth5, pth6,...
+                            pth7, pth8, pth9, pth10, pth11 tth];
             
             bic.RefreshGUI;       
             bic.InGUI = true;
@@ -1234,15 +1316,15 @@ classdef BicAn
             if n>2
                 if cbarNorth
                     cbar = colorbar('location','NorthOutside');                      
-                    xlabel(cbar,strings{3},'fontsize',fsize,'fontweight','bold')
+                    xlabel(cbar,strings{3},'fontsize',fsize,'fontweight',fweight)
                 else
                     cbar = colorbar;
-                    ylabel(cbar,strings{3},'fontsize',fsize,'fontweight','bold')
+                    ylabel(cbar,strings{3},'fontsize',fsize,'fontweight',fweight)
                 end
             end
             
-            xlabel(strings{1},'fontsize',fsize,'fontweight','bold')
-            if n>1; ylabel(strings{2},'fontsize',fsize,'fontweight','bold'); end;
+            xlabel(strings{1},'fontsize',fsize,'fontweight',fweight)
+            if n>1; ylabel(strings{2},'fontsize',fsize,'fontweight',fweight); end;
             
             set(gca,'YDir','normal',...  YDir is crucial w/ @imagesc!
                 'fontsize',fsize,...
@@ -1418,30 +1500,26 @@ function SwitchPlot(obj,event)
 % For changing desired plottable
 % - - - - - - - - 
     bic = get(obj,'UserData');
-    press = event.Character;
-    switch press
-        case {'B','A','R','I','P','M','S'}
-            if isequal(press,'B') 
-                bic.PlotType = 'bicoh';
-            elseif isequal(press,'A') 
-                bic.PlotType = 'abs';
-            elseif isequal(press,'R') 
-                bic.PlotType = 'real';
-            elseif isequal(press,'I') 
-                bic.PlotType = 'imag';
-            elseif isequal(press,'P') 
-                bic.PlotType = 'angle';
-            elseif isequal(press,'M') 
-                bic.PlotType = 'mean';
-            elseif isequal(press,'S') 
-                bic.PlotType = 'std';
+    if ~isempty(event.Modifier)
+        if isequal(event.Modifier{1},'shift')
+            ind = [];
+            if length(event.Character)==1
+                ind = find(event.Character == 'BARIPMS',1);
+            end
+            if ~isempty(ind)
+                figs = {'bicoh','abs','real','imag','angle','mean','std'};
+                bic.PlotType = figs{ind};
+            elseif isequal(event.Key,'rightarrow')
+                bic.PlotSlice = mod(bic.PlotSlice, length(bic.tv)) + 1;
+            elseif isequal(event.Key,'leftarrow')
+                bic.PlotSlice = mod(bic.PlotSlice - 1, length(bic.tv));
+            else
+                return
             end
             % Activate!
             bic.RefreshGUI;
             set(obj,'UserData',bic);
-            
-        otherwise
-            return
+        end
     end
 end
 
@@ -1475,7 +1553,7 @@ function ClickPlot(obj,~)
             end
             while button~=3 && length(X)<ClickLim
                 [x,y,button] = ginput(1);
-                if button==1 && x>=dum(1) && x<=dum(end) && y>=dum(1) && y<=dum(end)
+                if button==1 && x>=dum(1) && x<=dum(end) && y>=dum(1) && y<=dum(end)/2
                     text(x,y,'x','color',0.5*[1 1 1],'fontsize',14,'fontweight','bold')
                     [~,Ix] = min(abs(dum-x));
                     [~,Iy] = min(abs(dum-y));
@@ -1527,8 +1605,8 @@ function PlayButton(~,~)
     set(gcbo,'TooltipString','Playing... Click to pause');
     
     fprintf('Note during callback = "%s"\n',bic.Note)
-    bic.CMap = 'cmr';
-    [~,M,~] = size(bic.sg);
+    %[~,M,~] = size(bic.sg);
+    M = length(bic.tv);
     
     bic.IsPlaying = true;
     set(gcbf,'UserData',bic);
@@ -1549,9 +1627,56 @@ function PauseButton(~,~)
 % ------------------
 % Callback for pause
 % ------------------
+    set(gcbo,'TooltipString','Play');
     bic = get(gcbf,'UserData');
     bic.IsPlaying = false;
     set(gcbf,'UserData',bic);
+end
+
+function InputButton(~,~)
+% ------------------
+% Callback for CalcMean()
+% ------------------
+    bic = get(gcbf,'UserData');
+    
+    prompt = {'SubInt','Step','LilGuy','Sigma','Window',...
+                'JustSpec','Detrend','ZPad','Cross','BicVec'};
+    name = 'NewInput';
+    for k=1:4
+        def{k} = num2str(bic.(prompt{k}));
+    end
+    for k=6:9
+        def{k} = 'false';
+        if bic.(prompt{k})
+            def{k} = 'true';
+        end
+    end
+    def{5} = bic.Window;
+    def{10} = sprintf('%d',bic.BicVec);
+    numlines = 1;
+    answer = inputdlg(prompt,name,numlines,def);
+    
+    if ~isempty(answer)
+        
+        fig = bic.Figure;
+        ax  = bic.AxHands;
+        
+        str = ['BicAn(bic.Raw,''SampRate'',' num2str(bic.SampRate)];
+        for k=[1:4 6:9]
+            str = [str sprintf(',''%s'',%s',prompt{k},answer{k})];
+        end
+        dum = answer{10};
+        bvstr = sprintf('[%d,%d,%d]',str2double(dum(1)),str2double(dum(2)),str2double(dum(3)));
+        str = [str ',''Window'',''' answer{5} ''',''BicVec'',' bvstr ',''PlotIt'',false)'];
+
+        bic = eval(str);
+        
+        bic.Figure  = fig;
+        bic.AxHands = ax;
+        bic.RefreshGUI; 
+        
+        set(gcbf,'UserData',bic);
+    end
 end
 
 function CalcMeanButton(~,~)
@@ -1560,5 +1685,41 @@ function CalcMeanButton(~,~)
 % ------------------
     bic = get(gcbf,'UserData');
     bic = bic.CalcMean(5);
+    set(gcbf,'UserData',bic);
+end
+
+function PlotButton(~,~)
+% ------------------
+% Callback for CalcMean()
+% ------------------
+    bic = get(gcbf,'UserData');
+    
+    set(gcbf,'UserData',bic);
+end
+
+function InterpButton(~,~)
+% ------------------
+% Callback for CalcMean()
+% ------------------
+    bic = get(gcbf,'UserData');
+    
+    set(gcbf,'UserData',bic);
+end
+
+function InspectButton(~,~)
+% ------------------
+% Callback for CalcMean()
+% ------------------
+    bic = get(gcbf,'UserData');
+    
+    set(gcbf,'UserData',bic);
+end
+
+function ConfIntButton(~,~)
+% ------------------
+% Callback for CalcMean()
+% ------------------
+    bic = get(gcbf,'UserData');
+    
     set(gcbf,'UserData',bic);
 end
