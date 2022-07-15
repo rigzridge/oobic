@@ -117,6 +117,7 @@ classdef BicAn
     properties (Constant)
         FontSize = 20;
         WarnSize = 1000;
+        Date     = datestr(now);
     end
 
     % Dependents
@@ -132,11 +133,14 @@ classdef BicAn
         NormToNyq = false;
         Nseries   = [];
         WinVec    = [];
+        Figure
+        Axes
+        Slider
     end
 
     % Editables
     properties
-        Note      = datestr(now);
+        Note      = ' ';
         Raw       = [];
         Processed = [];
         History   = ' ';
@@ -498,7 +502,7 @@ classdef BicAn
                 sstr = 'log_{10}|W(t,f)|';
             end
             for k=1:bic.Nseries
-                figure
+                %figure
                 imagesc(bic.tv/10^bic.TScale,bic.fv/10^bic.FScale,log10(abs(bic.sg(:,:,k))));
                 bic.PlotLabels({tstr,fstr,sstr},bic.FontSize,bic.CbarNorth);
                 colormap(bic.CMap);
@@ -509,6 +513,7 @@ classdef BicAn
         % ------------------
         % Plot bispectrum
         % ------------------
+           
             guy = bic.PlotType;
             switch guy
                 case 'bicoh'
@@ -527,7 +532,7 @@ classdef BicAn
 
             if bic.Nseries==1
                 f = bic.fv/10^bic.FScale;
-                imagesc(f,f/2,dum) 
+                h = imagesc(f,f/2,dum);
                 %ylim([0 f(end)/2]); 
                 line([0 f(end)/2],[0 f(end)/2],'linewidth',2.5,'color',0.5*[1 1 1])
                 line([f(end)/2 f(end)],[f(end)/2 0],'linewidth',2.5,'color',0.5*[1 1 1])
@@ -541,7 +546,11 @@ classdef BicAn
             bic.PlotLabels({fstr1,fstr2,cbarstr},bic.FontSize,bic.CbarNorth);
             
             colormap(bic.CMap);
+            
+            get(h)
+            bic.History = get(h,'CData');
         end % PlotBispec
+        
 
         function bic = Coherence(bic)
         % ------------------
@@ -628,13 +637,83 @@ classdef BicAn
             bic.PlotType = old_plot;
         end % PlotConfidence
         
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
         function bic = PlotGUI(bic)
         % ------------------
         % Convenience
         % ------------------
+            bic.Figure = figure('Position',[100 100 600 600],...
+                'Resize','off'   ,...
+                'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event),...
+                'WindowButtonDownFcn',@(src,event)ClickPlot(bic,event));   
+            bic.Axes = axes('DataAspectRatio',[1 1 1],...
+                'XLimMode','manual','YLimMode','manual',...
+                'DrawMode','fast',...
+                'Parent',bic.Figure);
+            bic.Slider = uicontrol('Style','slider',...
+                'Parent',bic.Figure,...
+                'Max',1,...
+                'Min',0,...
+                'Value',0,...
+                'TooltipString','0',...
+                'Units','normalized',...
+                'Position',[.95 .1 .02 .2],...
+                'SliderStep',[.01 .10]); %,...               
+                %'Callback',@(src,event)slider_cb(pss));
+                
+            % Create the toolbar
+            th = uitoolbar(bic.Figure);
 
+            % Add a push tool to the toolbar
+            a = [.20:.05:0.95]
+            img1(:,:,1) = repmat(a,16,1)'
+            img1(:,:,2) = repmat(a,16,1);
+            img1(:,:,3) = repmat(flipdim(a,2),16,1);
+            pth = uipushtool(th,'CData',img1,...
+                       'TooltipString','My push tool',...
+                       'HandleVisibility','off')
+            % Add a toggle tool to the toolbar
+            img2 = rand(16,16,3);
+            tth = uitoggletool(th,'CData',img2,'Separator','on',...          
+           'TooltipString','Your toggle tool',...
+           'HandleVisibility','off')
+                
+            h = figure('position',[100 100 600 600])
+            a1 = axes('position',[0.1 0.1 0.4 0.4])
+            a2 = axes('position',[0.5 0.5 0.4 0.4])
+                    
         end % PlotGUI
+        
+        
+        
+        function ClickPlot(bic,event)
+        % For changing desired plottable
+        % - - - - - - - - 
+            [x,y,button] = ginput(1)
+            if button==1
+                [~,Ix] = min(abs(bic.fv-x))
+                [~,Iy] = min(abs(bic.fv-y))
+
+                v = [1 1 1];
+                [w,B,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Iy,Ix,false);
+                figure
+                plot(unwrap(angle(Bi))/pi)
+                %plot(log10(abs(Bi)))
+                %ylim([-10 -1])
+            end
+        end
+        
+        
+        
 
         function bic = MakeMovie(bic)
         % ------------------
@@ -1023,7 +1102,7 @@ classdef BicAn
         % Demonstration
         % ------------------
             bic = BicAn;
-            [x,t,fS] = bic.TestSignal('cross_3tone');
+            [x,t,fS] = bic.TestSignal('3tone');
             %N = 512*1;
             N = length(t);
             x = x(:,1:N);
