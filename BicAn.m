@@ -62,7 +62,12 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-% 7/07/2022 -> 
+% 7/08/2022 -> Made get.Samples check branchless, and added get.Raw check;
+% adjusted "ProcessData" method to stop plotting, now PlotIt = true goes
+% straight to GUI. Added "WhichPlot" helper method to identify the plot of 
+% interest, "PlotPointOut" now reports location in bifrequency-space.
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/07/2022 -> Had a good idea about making cross-bicoherence branchless.
 % [Worked quite a bit with PyBic in the evening] Made general function to
 % handle time/freq scaling "set" functions. Further progress on GUI. Clicks
 % on bicoherence spectra allow grabbing of multiple points now, ...
@@ -132,9 +137,10 @@ classdef BicAn
 
     % Globals 
     properties (Constant)
-        FontSize = 18;
-        WarnSize = 1000;
-        Date     = datestr(now);
+        LineWidth = 2;
+        FontSize  = 20;
+        WarnSize  = 1024;
+        Date      = datestr(now);
     end
 
     % Dependents
@@ -177,7 +183,7 @@ classdef BicAn
         Filter    = 'none';
         Bispectro = false;
         Smooth    = 1;
-        PlotIt    = false;
+        PlotIt    = true;
         LilGuy    = 1e-6;
         SizeWarn  = true;
         CMap      = 'viridis';
@@ -225,39 +231,46 @@ classdef BicAn
         % ------------------  
         % "Get" functions
         % ------------------  
-        function val = get.MaxRes(bic)
+        function val = get.MaxRes(bic)      % Maximum resolution
             val = bic.SampRate / bic.SubInt;
         end
-        function val = get.NFreq(bic)
+        function val = get.NFreq(bic)       % Number of Fourier bins
             val = floor( bic.SampRate / bic.FreqRes );
         end
-        function val = get.Nseries(bic)
+        function val = get.Nseries(bic)     % Number of time-series
             [val,~] = size(bic.Raw);
         end
-        function val = get.Samples(bic)
-            if ~isempty(bic.Processed)
-                val = length(bic.Processed);
-            else 
-                val = length(bic.Raw);
-            end
+        function val = get.Samples(bic)     % Samples in data
+            val = (~isempty(bic.Processed))*length(bic.Processed) + isempty(bic.Processed)*length(bic.Raw)
         end
-        function val = get.LineColor(bic)
-            val = eval(sprintf('%s(256)',bic.CMap)); % For coloring the FFT trace
+        function val = get.LineColor(bic)   % For coloring plots
+            val = eval(sprintf('%s(256)',bic.CMap)); 
         end
 
         % ------------------  
         % "Set" functions
         % ------------------  
-        function bic = set.Window(bic,val)
+        function bic = set.Raw(bic,val)     % Checks for raw data
+            dum = size(val);                % Get data dimensions
+            if dum(1)>dum(2)                % Check if column vector
+                val = val.';                % Transpose
+                dum = fliplr(dum);          % Flip dimensions
+            end
+            if dum(1)>3
+                error('BicAn:Input','Invalid input!\nMaximum time-series is 3...\nSee "help BicAn"'); 
+            end
+            bic.Raw = val;
+        end
+        function bic = set.Window(bic,val)  % Checks for window
             bic.Window = lower(val);
             try
-                window(val,10);  % Try MATLAB's windowing function
+                window(val,10);            % Try MATLAB's windowing function
             catch winbeef 
                 warning('BicAn:wrongWindow','\n"%s" window unknown... Using Hann.',bic.Window)
                 bic.Window = 'hann';
             end
         end
-        function bic = set.SpecType(bic,val)
+        function bic = set.SpecType(bic,val)% Checks for spectrogram choice
             switch lower(val)
                 case {'fft','stft','fourier','wave','wavelet','cwt'}
                     bic.SpecType = val;
@@ -266,31 +279,20 @@ classdef BicAn
                     bic.SpecType = 'stft';
             end
         end
-        function bic = set.TScale(bic,val)
+        function bic = set.TScale(bic,val)  % Checks for time-scaling
             bic.TScale = CheckScales(bic.TScale,val);
         end
-        function bic = set.FScale(bic,val)
+        function bic = set.FScale(bic,val)  % Checks for freq-scaling
             bic.FScale = CheckScales(bic.FScale,val);               
         end
         
         
-
         function bic = ParseInput(bic,vars)
         % ------------------
         % Handle inputs
         % ------------------
             Ninputs = length(vars);
             bic.RunBicAn = true;
-            
-            if isnumeric(vars{1})
-                [nrows,ncols] = size(vars{1});   % Get data dimensions
-                if nrows>ncols                   % Check if column vector
-                    vars{1} = vars{1}.';         % Transpose
-                end
-                if bic.Nseries>3
-                    error('BicAn:Input','Invalid input!\nMaximum time-series is 3...\nSee "help BicAn"'); 
-                end
-            end
             
             if Ninputs==1
                 if isobject(vars{1})
@@ -336,7 +338,7 @@ classdef BicAn
                     inbeef.message
                 end
 
-                % Do checks on inputs
+                % These input checks must be done in this order! Can't use set.Property functions =^\
                 bic.SubInt = floor(abs(bic.SubInt));       % Remove sign and decimals
                 if bic.SubInt==0 || bic.SubInt>bic.Samples % Check subinterval <= total samples
                     bic.SubInt = min(512,bic.Samples);     % Choose 512 as long as data isn't short
@@ -361,7 +363,6 @@ classdef BicAn
                     warning('BicAn:stepError','Step must be nonzero and less than subint... Using %d.',bic.Step)     
                 end
                 fprintf('done.\n')
-
             end
         end % ParseInput
 
@@ -383,18 +384,17 @@ classdef BicAn
             end        
             if ~bic.JustSpec
                 bic = bic.Bicoherence;
-                %bic = bic.CalcMean(15);
-                h = figure('WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event));
-                bic.PlotBispec;
             end            
             toc
             
-            figure
-            bic.PlotSpectro;
-            
             if bic.Verbose
                 disp(bic)
-            end        
+            end       
+
+            if bic.PlotIt
+                bic.PlotGUI;
+            end
+
         end % ProcessData
 
         
@@ -587,21 +587,7 @@ classdef BicAn
         % Plot bispectrum
         % ------------------
            
-            guy = bic.PlotType;
-            switch guy
-                case 'bicoh'
-                    dum = bic.bc;
-                    cbarstr = 'b^2(f_1,f_2)';
-                case {'abs','real','imag','angle'}
-                    dum = eval(sprintf('%s(bic.bs)',guy));
-                    cbarstr = sprintf('%s%s B(f_1,f_2)',upper(guy(1)),guy(2:end));
-                case 'mean'
-                    dum = bic.mb;
-                    cbarstr = '\langleb^2(f_1,f_2)\rangle';
-                case 'std'
-                    dum = bic.sb;
-                    cbarstr = '\sigma_{b^2}(f_1,f_2)';
-            end
+            [dum,cbarstr] = bic.WhichPlot;
 
             if bic.Nseries==1
                 f = bic.fv/10^bic.FScale;
@@ -622,6 +608,25 @@ classdef BicAn
         end % PlotBispec
 
 
+        function [dum,cbarstr] = WhichPlot(bic)
+            guy = bic.PlotType;
+            switch guy
+                case 'bicoh'
+                    dum = bic.bc;
+                    cbarstr = 'b^2(f_1,f_2)';
+                case {'abs','real','imag','angle'}
+                    dum = eval(sprintf('%s(bic.bs)',guy));
+                    cbarstr = sprintf('%s%s B(f_1,f_2)',upper(guy(1)),guy(2:end));
+                case 'mean'
+                    dum = bic.mb;
+                    cbarstr = '\langleb^2(f_1,f_2)\rangle';
+                case 'std'
+                    dum = bic.sb;
+                    cbarstr = '\sigma_{b^2}(f_1,f_2)';
+            end
+        end
+
+
         function PlotConfidence(bic)
         % ------------------
         % Plot confidence interval
@@ -639,12 +644,12 @@ classdef BicAn
         end % PlotConfidence
         
         
-        function PlotPower(bic)
+        function PlotPowerSpec(bic)
         % ------------------
         % Plot power spectrum
         % ------------------
             for k=1:bic.Nseries
-                semilogy(bic.fv,bic.ft(k,:),'linewidth',2,'color',bic.LineColor(70+40*k,:))
+                semilogy(bic.fv,bic.ft(k,:),'linewidth',bic.LineWidth,'color',bic.LineColor(70+40*k,:))
                 if k==1; hold on; end
             end
             hold off
@@ -652,7 +657,36 @@ classdef BicAn
             %set(gca,'xticklabels',linspace(bic.fv(1),bic.fv(end)+bic.fv(1),6));
             fstr = sprintf('f [%sHz]',bic.ScaleToString(bic.FScale));
             bic.PlotLabels({fstr,'|P| [arb.]'},bic.FontSize,bic.CbarNorth);
-        end % PlotPower
+        end % PlotPowerSpec
+
+
+        function PlotPointOut(bic,X,Y)
+        % ------------------
+        % Plot value of b^2 over time
+        % ------------------
+            figure %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            v = [1 1 1];
+            for k=1:length(X)
+                [b2,B,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(k),X(k),false);
+                %plot(unwrap(angle(Bi))/pi,'o')
+                semilogy(bic.tv,abs(Bi),'linewidth',bic.LineWidth,'color',bic.LineColor(70+20*k,:))
+                ylim([1e-10 1e0])
+                %axis tight
+                if k==1; hold on; end
+            end            
+            hold off
+            grid on
+            tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.FScale));
+            [~,ystr] = bic.WhichPlot; 
+            bic.PlotLabels({tstr,'xxx'},bic.FontSize,bic.CbarNorth);
+            dum = bic.fv;
+            if bic.Nseries>1
+                dum = bic.ff;
+                crossplot = true;
+            end
+            pntstr = sprintf('(%3.3f,%3.3f) %sHz',dum(X(k)),dum(Y(k)),bic.ScaleToString(bic.FScale));
+            text(0.5,0.5,pntstr,'fontsize',bic.FontSize)
+        end % PlotPointOut
 
 
         function bic = PlotGUI(bic)
@@ -701,10 +735,10 @@ classdef BicAn
                 
             h = figure('position',[100 100 600 600])
             a1 = axes('position',[0.1 0.1 0.4 0.4])
-            a2 = axes('position',[0.5 0.5 0.4 0.4])
-                    
+            a2 = axes('position',[0.5 0.5 0.4 0.4])                    
         end % PlotGUI
         
+
         function bic = RefreshGUI(bic)
         % ------------------
         % Callback for clicks
@@ -716,7 +750,7 @@ classdef BicAn
                 bic.PlotSpectro;
                 
             subplot(2,2,4);
-                bic.PlotPower;           
+                bic.PlotPowerSpec;           
         end % Refresh GUI
         
         
@@ -724,31 +758,9 @@ classdef BicAn
         % ------------------
         % Callback for clicks
         % ------------------
-            bic.CMap = 'cmr';
+            bic.CMap = 'jet';
             bic.RefreshGUI;
         end 
-        
-        
-        function PlotPointOut(bic,X,Y)
-        % ------------------
-        % Plot value of b^2 over time
-        % ------------------
-            figure %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            v = [1 1 1];
-            for k=1:length(X)
-                [b2,B,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(k),X(k),false);
-                %plot(unwrap(angle(Bi))/pi,'o')
-                semilogy(bic.tv,abs(Bi),'linewidth',2,'color',bic.LineColor(70+20*k,:))
-                ylim([1e-10 1e0])
-                %axis tight
-                if k==1; hold on; end
-            end            
-            hold off
-            grid on
-            fstr = sprintf('Time [%ss]',bic.ScaleToString(bic.FScale));
-            bic.PlotLabels({fstr,'STRRRRR'},bic.FontSize,bic.CbarNorth);
-        end % PlotPower
-        
         
         
         function ClickBispec(bic,event)
@@ -780,8 +792,6 @@ classdef BicAn
         end
         
         
-        
-
         function bic = MakeMovie(bic)
         % ------------------
         % Output movie
@@ -1202,6 +1212,7 @@ function LoadBar(m,M)
     ch2 = '_.:"^":.';
     fprintf('\b\b\b\b\b\b%3.0f%%%s%s',100*m/M,ch1(mod(m,8)+1),ch2(mod(m,8)+1))
 end % LoadBar
+
 
 function out = CheckScales(inscale,val)
     if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
