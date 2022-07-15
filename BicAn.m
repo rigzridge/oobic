@@ -22,33 +22,45 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Inputs
 % - - - - - - - - - - - - - - - - - - - - 
-% Y         -> time-series {or structure}
-% samprate  -> sampling rate [Hz]
-% res       -> desired frequency resolution* [Hz]
-% subint    -> subinterval size** [samples]
-% step      -> step size for Welch method [samples]
+% inData    -> time-series {or structure}
 % - - - - - - - - - - - - - - - - - - - - 
 % additional options... (see below for instructions)
 % - - - - - - - - - - - - - - - - - - - - 
-% window    -> select window function [default :: "hann" (see @window)]
-% justfft   -> true for just spectrogram [default :: false]
-% errlim    -> mean(fft) condition [default :: inf] 
-% fscale    -> scale for plotting frequencies [default :: 1]
-% dealias   -> applies antialiasing (LP) filter [default :: false]
-% bispectro -> computes bispectrogram [default :: false]
-% smooth    -> smooths FFT by n samples [default :: 1]
-% plot      -> start plotting tool when done [default :: false]
-% lilguy    -> set epsilon [default :: 1e-6]
-% sizewarn  -> warning for matrix size [default :: true]
-% cmap      -> adjust colormap [default :: parula]
-% plottype  -> set desired plottable [default :: 'bicoh']
 % autoscale -> autoscaling in figures [default :: false]
-% verbose   -> allow printing of info structure [default :: true]
+% bispectro -> computes bispectrogram [default :: false]
+% cbarnorth -> control bolorbar location [default :: true]
+% cmap      -> adjust colormap [default :: viridis]
+% dealias   -> applies antialiasing (LP) filter [default :: false]
 % detrend   -> remove linear trend from data [default :: false]
+% errlim    -> mean(fft) condition [default :: inf] 
+% filter    -> xxxxxxxxxxxxxxx [default :: 'none']
+% freqres   -> desired frequency resolution [Hz]
+% fscale    -> scale for plotting frequencies [default :: 0]
+% justspec  -> true for just spectrogram [default :: false]
+% lilguy    -> set epsilon [default :: 1e-6]
+% note      -> optional string for documentation [default :: {DATE & TIME}] 
+% plotit    -> start plotting tool when done [default :: false]
+% plottype  -> set desired plottable [default :: 'bicoh']
+% samprate  -> sampling rate in Hz [default :: 1]
+% sigma     -> parameter for wavelet spectrum [default :: 1]
+% spectype  -> set desired time-freq. method [default :: 'stft']
+% step      -> step size for Welch method in samples [default :: 512]
+% subint    -> subinterval size in samples [default :: 128]
+% sizewarn  -> warning for matrix size [default :: true]
+% smooth    -> smooths FFT by n samples [default :: 1]
+% tscale    -> scale for plotting time [default :: 0]
+% verbose   -> allow printing of info structure [default :: true]
+% window    -> select window function [default :: 'hann' (see @window)]
 % zpad      -> add zero-padding to end of time-series [default :: true]
-% note      -> optional string for notes [default :: ' '] 
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/02/2022 -> Adjusted "PlotBispec" method to include mean and std dev
+% plots (have not bug-tested this!); wedding this weekend so there might
+% not be too much progress on the BicAn front.
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/01/2022 -> Messed with signal generator ("SignalGen") function; wrapped
+% it with new "TestSignal" method that uses a (more) convenient switchyard.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 6/30/2022 -> Lost time today due to a fiasco with my DPP poster. In any
 % case, I've cleaned up a couple things, added support for auto-labeling of
@@ -67,11 +79,19 @@
 % "properties" block, added some access-protected props, and implemented
 % static "ApplySTFT" method. Thus, "SpectroSTFT" is just a wrapper! This is
 % pretty much the approach I want to take. (BicAn should be an analyzer,
-% but also a nice package of signal processing tools)
+% but also a nice package of signal processing tools!)
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 6/27/2022 -> First code. Inspired to do O.O. b/c of Phase Space Synth!
 % Honestly think that it will be glove in hand with a project like this.
 % Anyway: I'm trying to write a nice, clean constructor. [...]
+
+
+% STUFF TO ADD!
+% **Move "WinVec" to dependent properties, that way you can rid yourself of
+%   the dumb double-check for window stuff.
+% **Try to make anonymous function for t/fscale set methods
+% **Fix multi-time-series input to wavelet spec
+% **Fix input "v" vector! Should be some kind of variable!
 
 
 classdef BicAn
@@ -91,10 +111,11 @@ classdef BicAn
     end
     
     % Private
-    properties (Access=protected)
+    properties (Access=private)
         RunBicAn  = false;
         NormToNyq = false;
         Nseries   = [];
+        WinVec    = [];
     end
 
     % Editables
@@ -107,8 +128,7 @@ classdef BicAn
         FreqRes   = 0;
         SubInt    = 512;
         Step      = 128;
-        Window    = 'hann';
-        WinVec    = [];
+        Window    = 'hann';       
         Sigma     = 1;
         JustSpec  = false;
         SpecType  = 'stft';
@@ -301,6 +321,19 @@ classdef BicAn
         end % ParseInput
 
         
+        function [inData,t] = TestSignal(bic,in)
+        % ------------------
+        % Provides FM test signal
+        % ------------------
+            switch in
+                case 'circle'
+                    [inData,t] = bic.SignalGen(200,100,1,45,10,1,22,10,1,1/20,true);
+                otherwise
+                    [inData,t] = bic.SignalGen(200,100,1,25,0,0,0,0,0,0,false);
+            end        
+        end % TestSignal
+        
+        
         function bic = ProcessData(bic)
         % ------------------
         % Main processing loop
@@ -409,6 +442,12 @@ classdef BicAn
                 case {'abs','real','imag','angle'}
                     dum = eval(sprintf('%s(bic.bs)',guy));
                     cbarstr = sprintf('%s%s B(f_1,f_2)',upper(guy(1)),guy(2:end));
+                case 'mean'
+                    dum = bic.mb;
+                    cbarstr = '\langleb^2(f_1,f_2)\rangle';
+                case 'std'
+                    dum = sqrt(bic.sb);
+                    cbarstr = '\sigma_{b^2}(f_1,f_2)';
             end
 
             figure;
@@ -440,6 +479,7 @@ classdef BicAn
         % ------------------
             % Check cross-stuff
             v = [1 2 3];
+            v = [1 1 1];
             [b2,B] = bic.SpecToBispec(bic.sg,v,bic.LilGuy);
 
             bic.bs = B;
@@ -474,6 +514,8 @@ classdef BicAn
             bic.mb = bic.mb/Ntrials;
             bic.sb = bic.sb/(Ntrials-1);
         end % Confidence
+        
+        
 
 
         function bic = PlotConfidence(bic)
@@ -630,10 +672,7 @@ classdef BicAn
             w = (abs(B).^2)./(E12.*E3+lilguy); 
         end
         
-        
-        
-        
-        
+
         function win = HannWindow(N)
         % ------------------
         % Hann window
@@ -642,33 +681,24 @@ classdef BicAn
         end % HannWindow
         
         
-        function [sig,t] = TestSignal
+        function [sig,t] = SignalGen(fS,tend,Ax,fx,Afx,Ay,fy,Afy,Az,Ff,noisy)
         % ------------------
         % Provides FM test signal
         % ------------------
-            t = 0:1/200:100;                    % 100s time-vector sampled at 200 Hz
+            t = 0:1/fS:tend;  % Time-vector sampled at "fS" Hz
 
             % Make 3 sinusoidal signals...
-            Afx = 6;               % FM magnitude
-            Afy = 10;
-            Ff = 1/20;             % FM frequency (kind of like LFO)
-            fx = 45;               % Carrier frequency
-            fy = 22;
-            dfx = (Afx/fx)*sin(2*pi*t*Ff)./(t+eps);  % Addition to sinusoidal argument
-            dfy = (Afy/fy)*cos(2*pi*t*Ff)./(t+eps);
-            x = sin(fx*2*pi*t.*(1+dfx));                 % f1
-            y = sin(fy*2*pi*t.*(1+dfy));                 % f2
-            z = sin(2*pi*t.*(fx*(1+dfx)+fy*(1+dfy)));    % f1 + f2
-            u = sin(15*2*pi*t);                          % Unrelated oscillation
-            
-            %x = (1 - y).*u;
-            
-            sig = x + y + (z + rand*u) + 0.5*rand(1,length(t)) - 1 ;
-            %sig = 0*t + 5*sin(5*2*pi*t) + u;
-            %sig = 0.5*sin(5*2*pi*t) + x;
-        end % TestSignal
+            dfx = Afx*sin(2*pi*t*Ff);  
+            dfy = Afy*cos(2*pi*t*Ff);
+            x = Ax*sin( 2*pi*(fx*t + dfx) );              % f1
+            y = Ay*sin( 2*pi*(fy*t + dfy) );              % f2
+            z = Az*sin( 2*pi*(fx*t + fy*t + dfx + dfy) ); % f1 + f2
 
+            sig = x + y + z + noisy*(0.5*rand(1,length(t)) - 1);
 
+        end % SignalGen
+        
+       
         function PlotLabels(strings,fsize,cbarNorth)
         % ------------------
         % Convenience function
@@ -699,8 +729,7 @@ classdef BicAn
             tags = {'n',[],[],'\mu',[],[],'m','c','d','',...
                     [],[],'k',[],[],'M',[],[],'G',[],[],'T'};   
             s = tags{10+scale};
-        end % ScaleToString
-        
+        end % ScaleToString        
         
         function [spec,freq_vec,time_vec,err,Ntoss] = ApplySTFT(sig,samprate,subint,step,windoe,nfreq,t0,detrend,errlim,smoo)
         % ------------------
@@ -719,7 +748,7 @@ classdef BicAn
                 win = window(windoe,nfreq)';  % Try MATLAB's windowing function
             catch winbeef 
                 warning('BicAn:wrongWindow','\n"%s" window unknown... Using Hanning.',windoe)
-                win = sin(pi*(0:nfreq-1)/(nfreq-1)).^12; % Apply Hann window
+                win = sin(pi*(0:nfreq-1)/(nfreq-1)).^2; % Apply Hann window
             end
             
             fprintf(' Working...      ')
@@ -760,7 +789,6 @@ classdef BicAn
             freq_vec = freq_vec(1:lim); 
             
         end % ApplySTFT
-        
 
         function [CWT,freq_vec,time_vec] = ApplyCWT(sig,samprate,sigma)
         % ------------------
