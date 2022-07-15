@@ -1,18 +1,15 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-%/\\\\\\\\\\\\\___________________________/\\\\\\\\\__________________        
-%\/\\\/////////\\\_______________________/\\\\\\\\\\\\\________________       
-%_\/\\\_______\/\\\__/\\\________________/\\\/////////\\\_______________      
-% _\/\\\\\\\\\\\\\\__\///______/\\\\\\\\_\/\\\_______\/\\\__/\\/\\\\\\___     
-%  _\/\\\/////////\\\__/\\\___/\\\//////__\/\\\\\\\\\\\\\\\_\/\\\////\\\__    
-%   _\/\\\_______\/\\\_\/\\\__/\\\_________\/\\\/////////\\\_\/\\\__\//\\\_   
-%    _\/\\\_______\/\\\_\/\\\_\//\\\________\/\\\_______\/\\\_\/\\\___\/\\\_  
-%     _\/\\\\\\\\\\\\\/__\/\\\__\///\\\\\\\\_\/\\\_______\/\\\_\/\\\___\/\\\ 
-%      _\/////////////____\///_____\////////__\///________\///__\///____\///
-% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+%    ____                 ______             
+%   /\  _`\    __        /\  _  \                       Version 4.00
+%   \ \ \L\ \ /\_\    ___\ \ \L\ \    ___    
+%    \ \  _ <'\/\ \  /'___\ \  __ \ /' _ `\          (c) 2022 -- G.Riggs
+%     \ \ \L\ \\ \ \/\ \__/\ \ \/\ \/\ \/\ \ 
+%      \ \____/ \ \_\ \____\\ \_\ \_\ \_\ \_\      WVU Physics & Astronomy
+%       \/___/   \/_/\/____/ \/_/\/_/\/_/\/_/      
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -     
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 % Object-oriented bicoherence analysis and signal processing toolbox
-% v4.0 (c) 2022 G.A. Riggs, WVU Dept. of Physics & Astronomy 
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% The Bispectrum
@@ -33,34 +30,37 @@
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % additional options... (see below for instructions)
 % - - - - - - - - - - - - - - - - - - - - 
-% autoscale -> autoscaling in figures [default :: false]
-% bispectro -> computes bispectrogram [default :: false]
-% cbarnorth -> control bolorbar location [default :: true]
-% cmap      -> adjust colormap [default :: viridis]
-% dealias   -> applies antialiasing (LP) filter [default :: false]
-% detrend   -> remove linear trend from data [default :: false]
-% errlim    -> mean(fft) condition [default :: inf] 
-% filter    -> xxxxxxxxxxxxxxx [default :: 'none']
-% freqres   -> desired frequency resolution [Hz]
-% fscale    -> scale for plotting frequencies [default :: 0]
-% justspec  -> true for just spectrogram [default :: false]
-% lilguy    -> set epsilon [default :: 1e-6]
-% note      -> optional string for documentation [default :: ' '] 
-% plotit    -> start plotting tool when done [default :: false]
-% plottype  -> set desired plottable [default :: 'bicoh']
-% samprate  -> sampling rate in Hz [default :: 1]
-% sigma     -> parameter for wavelet spectrum [default :: 1]
-% spectype  -> set desired time-freq. method [default :: 'stft']
-% step      -> step size for Welch method in samples [default :: 512]
-% subint    -> subinterval size in samples [default :: 128]
-% sizewarn  -> warning for matrix size [default :: true]
-% smooth    -> smooths FFT by n samples [default :: 1]
-% tscale    -> scale for plotting time [default :: 0]
-% verbose   -> allow printing of info structure [default :: true]
-% window    -> select window function [default :: 'hann' (see @window)]
-% zpad      -> add zero-padding to end of time-series [default :: true]
+% autoscale -> autoscaling in figures                  [default :: False]
+% bispectro -> computes bispectrogram                  x[default :: False]
+% cbarnorth -> control bolorbar location               [default :: True]
+% cmap      -> adjust colormap                         [default :: 'viridis']
+% dealias   -> applies antialiasing (LP) filter        x[default :: False]
+% detrend   -> remove linear trend from data           [default :: False]
+% errlim    -> mean(fft) condition                     [default :: 1e15] 
+% filter    -> xxxxxxxxxxxxxxx                         x[default :: 'none']
+% freqres   -> desired frequency resolution [Hz]       [default :: 0]
+% fscale    -> scale for plotting frequencies          [default :: 0]
+% justspec  -> true for just spectrogram               [default :: False]
+% lilguy    -> set epsilon                             [default :: 1e-6]
+% note      -> optional string for documentation       [default :: ' '] 
+% plotit    -> start plotting tool when done           [default :: False]
+% plottype  -> set desired plottable                   [default :: 'bicoh']
+% samprate  -> sampling rate in Hz                     [default :: 1]
+% sigma     -> parameter for wavelet spectrum          [default :: 0]
+% spectype  -> set desired time-freq. method           [default :: 'stft']
+% step      -> step size for Welch method in samples   [default :: 512]
+% subint    -> subinterval size in samples             [default :: 128]
+% sizewarn  -> warning for matrix size                 x[default :: True]
+% smooth    -> smooths FFT by n samples                [default :: 1]
+% tscale    -> scale for plotting time                 [default :: 0]
+% tzero     -> initial time                            [default :: 0]
+% verbose   -> allow printing of info structure        [default :: True]
+% window    -> select window function                  [default :: 'hann']
+% zpad      -> add zero-padding to end of time-series  [default :: False]
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/13/2022 -> Small tweak here and there; cross-coherence in main loop.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/12/2022 -> Been messing with a bunch of things! Getting the point-outs
 % for cross-bicoherence stuff squared away, added warning for attempts to
@@ -186,7 +186,7 @@ classdef BicAn
     end
     
     % Private
-    properties (Access=private)
+    properties (Access=public)
         InGUI     = false;
         RunBicAn  = false;
         IsPlaying = false;
@@ -247,9 +247,9 @@ classdef BicAn
         ff = []; % Full frequency vector
         ft = []; % Fourier amplitudes
         sg = []; % Spectrogram (complex)
-        xs = []; % Cross-spectrum
-        xc = []; % Cross-coherence
-        cs = []; % Coherence spectrum
+        cs = []; % Cross-spectrum
+        cc = []; % Cross-coherence
+        cg = []; % Coherence spectrum
         bs = []; % Bispectrum
         bc = []; % Bicoherence spectrum
         bp = []; % Biphase proxy
@@ -355,10 +355,40 @@ classdef BicAn
                     end
                 elseif isnumeric(vars{1})
                     % If array input, use normalized frequencies
-                    bic.Raw       = vars{1};
-                    bic.SampRate  = 1;  
+                    bic.Raw       = vars{1}; 
                     bic.FreqRes   = 1/bic.SubInt;     
                     bic.NormToNyq = true;
+                elseif ischar(vars{1})
+                    % Check string inputs
+                    bic.RunBicAn = false;
+                    dum = lower(vars{1});
+
+                    %%%% Should this be global?
+                    siglist = {'classic','tone','noisy','2tone','3tone','line','circle','fast_circle',...
+                                'cross_2tone','cross_3tone','cross_circle','demo'};
+                    switch dum
+                        case 'input'
+                            % Start getfile prompt
+                            str = uigetfile()
+
+                            % {PARSE FILE...}
+                        case siglist
+                            % If explicit test signal (or demo), confirm with user, then recursively call ParseInputs
+                            str = 'Test signal!';
+                            if isequal(dum,'demo')
+                                dum = 'tone'  
+                            end
+                            dumstr = sprintf('Run the "%s" demo?',dum);
+
+                            qwer = questdlg(dumstr,'RunDemo','Yes!','Rather not...','Yes!');
+                            if isequal(qwer,'Yes!') 
+                                [sig,~,fS] = bic.TestSignal(dum);
+                                bic = bic.ParseInput({sig,'SampRate',fS});  
+                            end
+                        otherwise
+                            str = 'Hmmm. That string isn`t supported yet... Try ''demo''.'
+                    end
+                    disp(str)
                 else
                     error('BicAn:improperInput','\nInput must be BicAn object or array. "%s" class is not supported.',...
                         class(vars{1}))
@@ -420,6 +450,34 @@ classdef BicAn
             end
         end % ParseInput
 
+
+        function bic = ApplyFilter(bic)
+        % ------------------
+        % LP/BP/HP filter
+        % ------------------
+            %%%%%%%%%%%%%%%%
+        end % ApplyFilter
+        
+        
+        function bic = ApplyZPad(bic)
+        % ------------------
+        % Zero-padding
+        % ------------------
+            if bic.ZPad
+                tail_error = mod(bic.Samples,bic.SubInt);
+                if tail_error~=0
+                    % Add enough zeros to make subint evenly divide samples
+                    bic.Processed = [bic.Raw zeros(bic.Nseries,bic.SubInt-tail_error)];  
+                else
+                    bic.Processed = bic.Raw;
+                end
+            else
+                % Truncate time series to fit integer number of stepped subintervals
+                samplim = bic.Step*floor((bic.Samples - bic.SubInt)/bic.Step) + bic.SubInt;
+                bic.Processed = bic.Raw(:,1:samplim);
+            end
+        end % ApplyZPad
+
        
         function bic = ProcessData(bic)
         % ------------------
@@ -433,16 +491,17 @@ classdef BicAn
                     bic = bic.SpectroSTFT;
                     bic.SpecType = 'stft';
                 case {'wave','wavelet','cwt'}
-                    if bic.Sigma==0
-                       bic.Sigma = 5*bic.Samples/bic.SampRate; 
-                    end
+                    
                     bic = bic.SpectroWavelet;
                     bic.SpecType = 'wave';
-            end        
+            end   
+            if bic.Cross
+                bic = bic.Coherence;
+            end     
             if ~bic.JustSpec
                 bic = bic.Bicoherence;
             end  
-            fprintf('Process required %.5f seconds.\n',toc) % Done!
+            fprintf('Complete! Process required %.5f seconds.\n',toc) % Done!
             
             if bic.Verbose
                 disp(bic)
@@ -477,6 +536,8 @@ classdef BicAn
                     [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,10,1,1/20,noisy);
                 case 'circle'
                     [inData,t] = bic.SignalGen(fS,tend,1,22,10,1,45,10,1,1/20,noisy);
+                case 'fast_circle'
+                    [inData,t] = bic.SignalGen(fS,tend,1,22,5,1,45,5,1,5/20,noisy);
                 case 'cross_2tone'
                     [x,t]  = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,noisy);
                     y      = bic.SignalGen(fS,tend,1,45,0,0,0,0,0,0,noisy);
@@ -497,33 +558,6 @@ classdef BicAn
             end        
         end % TestSignal   
 
-
-        function bic = ApplyFilter(bic)
-        % ------------------
-        % LP/BP/HP filter
-        % ------------------
-            %%%%%%%%%%%%%%%%
-        end % ApplyFilter
-        
-        
-        function bic = ApplyZPad(bic)
-        % ------------------
-        % Zero-padding
-        % ------------------
-            if bic.ZPad
-                tail_error = mod(bic.Samples,bic.SubInt);
-                if tail_error~=0
-                    % Add enough zeros to make subint evenly divide samples
-                    bic.Processed = [bic.Raw zeros(bic.Nseries,bic.SubInt-tail_error)];  
-                else
-                    bic.Processed = bic.Raw;
-                end
-            else
-                % Truncate time series to fit integer number of stepped subintervals
-                samplim = bic.Step*floor((bic.Samples - bic.SubInt)/bic.Step) + bic.SubInt;
-                bic.Processed = bic.Raw(:,1:samplim);
-            end
-        end % ApplyZPad
 
         %% Analysis
         function bic = SpectroSTFT(bic)
@@ -550,9 +584,13 @@ classdef BicAn
         % ------------------
         % Wavelet method
         % ------------------
+            if bic.Sigma==0  % Check auto
+               bic.Sigma = 5*bic.Samples/bic.SampRate; 
+            end
+
             if bic.Detrend
                 for k=1:bic.Nseries
-                    bic.Processed(k,:) = bic.ApplyDetrend(bic.Processed(:,k));
+                    bic.Processed(k,:) = bic.ApplyDetrend(bic.Processed(k,:));
                 end
             end
             
@@ -560,8 +598,8 @@ classdef BicAn
                 bic.Processed(k,:) = bic.Processed(k,:) - mean(bic.Processed(k,:));
             end
             
-            if length(bic.Processed)>bic.WarnSize && bic.SizeWarn
-                bic.SizeWarnPrompt(length(bic.Processed));
+            if bic.Samples>bic.WarnSize && bic.SizeWarn
+                bic.SizeWarnPrompt(bic.Samples);
             end 
 
             [CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
@@ -584,8 +622,8 @@ classdef BicAn
             else
                 [cspec,crosscoh,coh] = bic.SpecToCoherence(bic.sg,bic.LilGuy);
                 bic.cs = cspec;
-                bic.xc = crosscoh;
-                bic.xs = coh;           
+                bic.cc = crosscoh;
+                bic.cg = coh;           
             end
         end % Coherence
 
@@ -674,7 +712,7 @@ classdef BicAn
             
             %set(gca,'xticklabels',linspace(bic.fv(1),bic.fv(end)+bic.fv(1),6));
             fstr = sprintf('f_n [%sHz]',bic.ScaleToString(bic.FScale));
-            bic.PlotLabels({fstr,'|P| [arb.]'},bic.FontSize,bic.CbarNorth);
+            bic.PlotLabels({fstr,'|P|^2 [arb.]'},bic.FontSize,bic.CbarNorth);
         end % PlotPowerSpec
 
 
@@ -685,13 +723,13 @@ classdef BicAn
             tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.TScale));
             fstr = sprintf('f [%sHz]',bic.ScaleToString(bic.FScale));
             if isequal(bic.SpecType,'stft')
-                sstr = 'log_{10}|P(t,f)|';
+                sstr = 'log_{10}|P(t,f)|^2';
             else
-                sstr = 'log_{10}|W(t,f)|';
+                sstr = 'log_{10}|W(t,f)|^2';
             end
             for k=1:bic.Nseries
-                %figure
-                imagesc(bic.tv/10^bic.TScale,bic.fv/10^bic.FScale,log10(abs(bic.sg(:,:,k))));
+                %figure1q
+                imagesc(bic.tv/10^bic.TScale,bic.fv/10^bic.FScale,2*log10(abs(bic.sg(:,:,k))));
                 bic.PlotLabels({tstr,fstr,sstr},bic.FontSize,bic.CbarNorth);
                 colormap(bic.CMap);
             end
@@ -715,7 +753,7 @@ classdef BicAn
                 f = bic.fv/10^bic.FScale;
                 imagesc(f,f/2,dum);
                 %ylim([0 f(end)/2]); 
-                line([0 f(end)/2],[0 f(end)/2],'linewidth',2.5,'color',0.5*[1 1 1])
+                line([0 f(end)/2],[0 f(end)/2],     'linewidth',2.5,'color',0.5*[1 1 1])
                 line([f(end)/2 f(end)],[f(end)/2 0],'linewidth',2.5,'color',0.5*[1 1 1])
             else 
                 f = bic.ff/10^bic.FScale;
@@ -859,6 +897,9 @@ classdef BicAn
         
         
         function bic = PlotGUI(bic)
+        % ------------------
+        % Interactive figure!
+        % ------------------
             
             bic.Figure = figure('Position',[100 0 800 600],...
                 'Resize','on',...
@@ -883,12 +924,16 @@ classdef BicAn
             
             th = uitoolbar(bic.Figure);
             % Push buttons on toolbar
-            img1 = rand(16,16,3);
+
+            dum = load('test_pic.mat');
+            %img1 = rand(16,16,3);
+            img1 = dum.M;
+
             pth1 = uipushtool(th,'CData',img1,...
                        'TooltipString','My push tool',...
                        'HandleVisibility','off');
                    
-            img2 = rand(16,16,3);
+            img2 = rand(20,20,3);
             pth2 = uipushtool(th,'CData',img2,...
                        'TooltipString','CalcMean()',...
                        'HandleVisibility','off',...
@@ -908,8 +953,7 @@ classdef BicAn
             bic.RefreshGUI;       
             bic.InGUI = true;
             
-            set(bic.Figure,'UserData',bic);
-            
+            set(bic.Figure,'UserData',bic);      
         end
 
         
@@ -952,7 +996,6 @@ classdef BicAn
         % ------------------
         % Output movie
         % ------------------
-
         end % MakeMovie
 
         
@@ -970,17 +1013,6 @@ classdef BicAn
             end
             pause(eps);
         end % SizeWarn
-        
-        
-        function bic = GUIOut(bic)
-        % ------------------
-        % Get output from GUI
-        % ------------------
-            dum = get(bic.Figure,'UserData');
-            if ~isempty(dum)
-                bic = dum;
-            end
-        end
         
     end % methods
 
@@ -1119,6 +1151,7 @@ classdef BicAn
         % ------------------
         % Cross-spectrum, cross-coherence, coherogram
         % ------------------
+            fprintf('Calculating cross-coherence...\n')     
             C = conj(spec(:,:,1)).*spec(:,:,2);
             N1 = mean( (abs(spec(:,:,1)).^2)' );
             N2 = mean( (abs(spec(:,:,2)).^2)' );
@@ -1231,7 +1264,7 @@ classdef BicAn
             try
                 win = window(windoe,nfreq)';  % Try MATLAB's windowing function
             catch winbeef 
-                warning('BicAn:wrongWindow','\n"%s" window unknown... Using Hanning.',windoe)
+                warning('BicAn:wrongWindow','\n"%s" window unknown... Using Hann.',windoe)
                 win = sin(pi*(0:nfreq-1)/(nfreq-1)).^2; % Apply Hann window
             end
             
@@ -1446,6 +1479,7 @@ function KillPlot(obj,~)
 % Callback for exiting GUI
 % ------------------
     bic = get(obj,'UserData');
+    bic.InGUI = false;
     % Set up dialog
     options.Default = 'Yes!';
     options.WindowStyle = 'modal';
@@ -1497,7 +1531,7 @@ end
 
 function PauseButton(~,~)
 % ------------------
-% Callback for play
+% Callback for pause
 % ------------------
     bic = get(gcbf,'UserData');
     bic.IsPlaying = false;
@@ -1506,10 +1540,9 @@ end
 
 function CalcMeanButton(~,~)
 % ------------------
-% Callback for play
+% Callback for CalcMean()
 % ------------------
     bic = get(gcbf,'UserData');
     bic = bic.CalcMean(5);
     set(gcbf,'UserData',bic);
 end
-
