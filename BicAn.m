@@ -62,6 +62,13 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/12/2022 -> Been messing with a bunch of things! Getting the point-outs
+% for cross-bicoherence stuff squared away, added warning for attempts to
+% plot empty data [e.g., before CalcMean() is run], tracking down a bug or
+% two. [...] Fixed "v" floating around... now BicVec property. CalcMean()
+% finally works with cross-b^2, and "x"s are plotted where you click!
+% Finaly got to the issue with inputs to cross-wavelet-b^2 analy-sizauce.  
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/11/2022 -> Tried lke hell to dynamically adjust colorbar's height/width
 % to save some space in GUI... absolute catastrophe. Also, I realize now
 % that the callbacks for the GUI figure will either have to be updated as
@@ -74,7 +81,7 @@
 % Condensed the guts of many set.Methods into a single subfunction. =^] 
 % Debugging time/freq-scaling issues with GUI and sitch. Added auto sigma.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-% 7/10/2022 -> Working on GUI stuff... Real slog
+% 7/10/2022 -> Working on GUI... Real slog, might change to handle class.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/09/2022 -> Mostly messed with PyBic... Small clean-up here and there.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -86,7 +93,7 @@
 % 7/07/2022 -> Had a good idea about making cross-bicoherence branchless.
 % [Worked quite a bit with PyBic in the evening] Made general function to
 % handle time/freq scaling "set" functions. Further progress on GUI. Clicks
-% on bicoherence spectra allow grabbing of multiple points now, ...
+% on bicoherence spectra allow grabbing of multiple points now; still bugs.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/06/2022 -> Working on GUI support. Want to essentially do the work of 
 % GUIDE with "axes()" calls, and use ginput for point-outs time-resolved 
@@ -130,25 +137,35 @@
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 6/27/2022 -> First code. Inspired to do O.O. b/c of Phase Space Synth!
 % Honestly think that it will be glove in hand with a project like this.
-% Anyway: I'm trying to write a nice, clean constructor. [...]
+% Anyway: I'm trying to write a nice, clean constructor. [...] Boom! =^O
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 % STUFF TO DO!
 % **Move "WinVec" to dependent properties, that way you can rid yourself of
 %   the dumb double-check for window stuff.
-% **Fix multi-time-series input to wavelet spec
-% *_Fix input "v" vector! Should be some kind of variable!
+% __Fix multi-time-series input to wavelet spec
+% __Fix input "v" vector! Should be some kind of variable!
 % *_Implement sizewarn
-% *_Line-out
+% __Line-out
 % **Inst. freq/ interpolation
-% *_Cross-bicoherence
-% **set(gcf,'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event)) is
-%   necessary to keep keypresses up-to-date with object...  
-% **Add CalcMean support for cross stuff (just look!)
-% **Fix issue with cross-bicoh and grabbing points
+% __Cross-bicoherence  
+% __Add CalcMean support for cross stuff (just look!)
+% __Fix issue with cross-bicoh and grabbing points
+% **Filter stuff!
+% **Movies
+% **Can colorbars be resized without weirdness?
+% **Why worry about class=BicAn inputs? Isn't that the point of OOP?
+% __Line-drawing issue with CWTs
 
-
-% **WTF IS HAPPENING WITH INGUI NOT SETTING?
+% KNOWN BUGS!
+% -> If data has not been created (bic.mb, say), then using PlotBispec()
+%    only throws error dialog and bails. This leaves bic.PlotType as whatever
+%    it was, so using a ClickPlot() call will try to produce data from an
+%    empty array, despite the GUI figure displaying "good" data.
+% __ FIX? Well, this is trivial in principle, but it isn't obvious what the
+%    best practice is. Personally, I think WhichPlot() should throw a flag
+%    to the other plotters, but it's something that will be annoying to
+%    rewrite!
 
 
 classdef BicAn
@@ -156,8 +173,6 @@ classdef BicAn
 
     % Globals 
     properties (Constant)
-        LineWidth = 2;
-        FontSize  = 20;
         WarnSize  = 1024;
         Date      = datestr(now);
     end
@@ -178,8 +193,6 @@ classdef BicAn
         NormToNyq = false;
         Nseries   = [];
         WinVec    = [];
-        Figure
-        Axes
         Slider
     end
 
@@ -189,6 +202,7 @@ classdef BicAn
         Raw       = [];
         Processed = [];
         History   = ' ';
+        
         SampRate  = 1;
         FreqRes   = 0;
         SubInt    = 512;
@@ -197,27 +211,35 @@ classdef BicAn
         Sigma     = 0;
         JustSpec  = false;
         SpecType  = 'stft';
+        Bispectro = false;
+        
         ErrLim    = inf;
         FScale    = 0;
         TScale    = 0;
         Filter    = 'none';
-        Bispectro = false;
         Smooth    = 1;
-        PlotIt    = true;
         LilGuy    = 1e-6;
         SizeWarn  = true;
+        BicVec    = [1 1 1];
+        
+        PlotIt    = true;
         CMap      = 'viridis';
         CbarNorth = true;
         PlotType  = 'bicoh';
         ScaleAxes = 'manual';
+        LineWidth = 2;
+        FontSize  = 20;
+        PlotSlice = 0; 
+        
         Verbose   = false;
         Detrend   = false;
         ZPad      = false;
         Cross     = false;
         Vector    = false;
         TZero     = 0;
-        PlotSlice = 0; 
         
+        Figure    
+        AxHands   = [];
         TBHands   = [];
         
         tv = []; % Time vector
@@ -237,7 +259,7 @@ classdef BicAn
         sb = []; % Std dev of b^2
     end % properties
 
-    % Functions
+    %% Class methods
     methods 
 
         function bic = BicAn(varargin)
@@ -314,7 +336,7 @@ classdef BicAn
             bic.FScale = CheckScales(bic.FScale,val);               
         end
         
-        
+        %% Inputs, etc.
         function bic = ParseInput(bic,vars)
         % ------------------
         % Handle inputs
@@ -323,10 +345,14 @@ classdef BicAn
             bic.RunBicAn = true;
             
             if Ninputs==1
-                if isobject(vars{1})
-                    % If object, output or go to GUI
+                if isobject(vars{1}) && isequal(class(vars{1}),'BicAn')
+                    % If BicAn object, output or go to GUI
                     bic = vars{1};
                     bic.RunBicAn = false;
+                    try
+                        bic = bic.PlotGUI;
+                    catch
+                    end
                 elseif isnumeric(vars{1})
                     % If array input, use normalized frequencies
                     bic.Raw       = vars{1};
@@ -415,8 +441,8 @@ classdef BicAn
             end        
             if ~bic.JustSpec
                 bic = bic.Bicoherence;
-            end            
-            toc
+            end  
+            fprintf('Process required %.5f seconds.\n',toc) % Done!
             
             if bic.Verbose
                 disp(bic)
@@ -478,14 +504,37 @@ classdef BicAn
         % ------------------
             %%%%%%%%%%%%%%%%
         end % ApplyFilter
+        
+        
+        function bic = ApplyZPad(bic)
+        % ------------------
+        % Zero-padding
+        % ------------------
+            if bic.ZPad
+                tail_error = mod(bic.Samples,bic.SubInt);
+                if tail_error~=0
+                    % Add enough zeros to make subint evenly divide samples
+                    bic.Processed = [bic.Raw zeros(bic.Nseries,bic.SubInt-tail_error)];  
+                else
+                    bic.Processed = bic.Raw;
+                end
+            else
+                % Truncate time series to fit integer number of stepped subintervals
+                samplim = bic.Step*floor((bic.Samples - bic.SubInt)/bic.Step) + bic.SubInt;
+                bic.Processed = bic.Raw(:,1:samplim);
+            end
+        end % ApplyZPad
 
-            
+        %% Analysis
         function bic = SpectroSTFT(bic)
         % ------------------
         % STFT method
         % ------------------     
             [spec,f,t,err,Ntoss] = bic.ApplySTFT(bic.Processed,bic.SampRate,bic.SubInt,...
                 bic.Step,bic.Window,bic.NFreq,bic.TZero,bic.Detrend,bic.ErrLim,bic.Smooth);
+
+            M = length(t);
+            fprintf('%d of %d intervals (%.0f%%) exceed given tolerance\n',Ntoss,bic.Nseries*M,Ntoss/M*100);
             
             bic.tv = t;
             bic.fv = f;
@@ -502,22 +551,26 @@ classdef BicAn
         % Wavelet method
         % ------------------
             if bic.Detrend
-                bic.Processed = bic.ApplyDetrend(bic.Processed);
+                for k=1:bic.Nseries
+                    bic.Processed(k,:) = bic.ApplyDetrend(bic.Processed(:,k));
+                end
             end
-            bic.Processed = bic.Processed - mean(bic.Processed);
+            
+            for k=1:bic.Nseries
+                bic.Processed(k,:) = bic.Processed(k,:) - mean(bic.Processed(k,:));
+            end
             
             if length(bic.Processed)>bic.WarnSize && bic.SizeWarn
                 bic.SizeWarnPrompt(length(bic.Processed));
             end 
 
-            %[CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
-            for k=1:bic.Nseries
-                [CWT(:,:,k),f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
-            end
+            [CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
 
             bic.tv = t + bic.TZero;
             bic.fv = f;
-            bic.ft = mean(abs(CWT'));    
+            for k=1:bic.Nseries
+                bic.ft(k,:) = mean(abs(CWT(:,:,k)'));
+            end
             bic.sg = CWT;
         end % SpectroWavelet
         
@@ -547,15 +600,15 @@ classdef BicAn
                 dum = bic.sg(:,WTrim:end-WTrim,:); 
             end
             if bic.Nseries==1
-                v = [1 1 1];
-                [b2,B] = bic.SpecToBispec(dum,v,bic.LilGuy);
+                bic.BicVec = [1 1 1];
+                [b2,B] = bic.SpecToBispec(dum,bic.BicVec,bic.LilGuy);
             else
                 if bic.Nseries==2
-                    v = [1 2 2];
+                    bic.BicVec = [1 2 2];
                 else
-                    v = [1 2 3];
+                    bic.BicVec = [1 2 3];
                 end
-                [b2,B] = bic.SpecToCrossBispec(dum,v,bic.LilGuy);
+                [b2,B] = bic.SpecToCrossBispec(dum,bic.BicVec,bic.LilGuy);
                 bic.ff = [-bic.fv(end:-1:2) bic.fv];
             end
 
@@ -569,18 +622,22 @@ classdef BicAn
         % Calculate mean of b^2
         % ------------------
             [n,m,r] = size(bic.sg);
-            v = [1 1 1];
             A = abs(bic.sg);
             
             if nargin==0; Ntrials = 100; end
-            bic.mb = zeros(floor(n/2),n);
-
-            bic.sb = bic.mb;
+           
+            bic.mb = zeros(size(bic.bc));
+            bic.sb = zeros(size(bic.bc));
+            
             for k=1:Ntrials
 
                 P = exp( 2i*pi*(2*rand(n,m,r) - 1) );
 
-                dum = bic.SpecToBispec(A.*P,v,bic.LilGuy);
+                if bic.Nseries==1
+                    dum = bic.SpecToBispec(A.*P,bic.BicVec,bic.LilGuy);
+                else
+                    dum = bic.SpecToCrossBispec(A.*P,bic.BicVec,bic.LilGuy);
+                end
                 old_est = bic.mb/(k - 1 + eps);
                 
                 bic.mb = bic.mb + dum;
@@ -593,14 +650,17 @@ classdef BicAn
         end % CalcMean
         
         
+        %% Plot methods
         function PlotPowerSpec(bic)
         % ------------------
         % Plot power spectrum
         % ------------------
             if bic.PlotSlice~=0
-                dum = abs(bic.sg(:,bic.PlotSlice,:).').^2;
+                dum = bic.sg(:,bic.PlotSlice,:);
+                [n,~,m] = size(dum);
+                dum = abs(reshape(dum,n,m).').^2;
             else
-                dum = bic.ft;
+                dum = (bic.ft).^2;
             end
         
             for k=1:bic.Nseries
@@ -644,10 +704,16 @@ classdef BicAn
         % ------------------
            
             [dum,cbarstr] = bic.WhichPlot;
+            if isempty(dum)
+                warnstr = sprintf('"%s" data has not been created!',bic.PlotType);
+                h = warndlg(warnstr,'!! Warning !!');
+                uiwait(h)
+                return
+            end
 
             if bic.Nseries==1
                 f = bic.fv/10^bic.FScale;
-                h = imagesc(f,f/2,dum);
+                imagesc(f,f/2,dum);
                 %ylim([0 f(end)/2]); 
                 line([0 f(end)/2],[0 f(end)/2],'linewidth',2.5,'color',0.5*[1 1 1])
                 line([f(end)/2 f(end)],[f(end)/2 0],'linewidth',2.5,'color',0.5*[1 1 1])
@@ -710,23 +776,30 @@ classdef BicAn
         % ------------------
             figure %%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
+            fLocX = X;
+            fLocY = Y;
+            
             [~,ystr] = bic.WhichPlot; 
             
-            v = [1 1 1];
             dum = bic.fv/10^bic.FScale;
             if bic.Nseries>1
                 dum = bic.ff/10^bic.FScale;
-                crossplot = true;
+                X = X - (length(bic.fv)-1);
+                Y = Y - (length(bic.fv)-1);
             end
-            
+
             if isequal(bic.PlotType,'bicoh')
                 
                 Ntrials = 1000; 
                 g = zeros(1,Ntrials);
+                xstr = sprintf('(%3.1f,%3.1f) %sHz',dum( fLocX(1) ),dum( fLocY(1) ),bic.ScaleToString(bic.FScale));
                 
+                fprintf('Calculating distribution for %s...      ',xstr)  
                 for k=1:Ntrials
-                    [g(k),~,~] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(1),X(1),true);
+                    LoadBar(k,Ntrials)
+                    [g(k),~,~] = bic.GetBispec(bic.sg,bic.BicVec,bic.LilGuy,Y(1),X(1),true);
                 end
+                fprintf('\b\b^]\n')  
                 
                 % Limit b^2, create vector, and produce histogram 
                 b2lim = 0.2;
@@ -741,7 +814,6 @@ classdef BicAn
                 hold on
                 plot(b2vec,(1/m)*exp(-b2vec/m).*(1-b2vec),'linewidth',bic.LineWidth,'color','red'); 
 
-                xstr = sprintf('(%3.1f,%3.1f) %sHz',dum(X(1)),dum(Y(1)),bic.ScaleToString(bic.FScale));
                 bic.PlotLabels({['b^2' xstr],'Probability density'},bic.FontSize,bic.CbarNorth);
                 grid on
                 legend('randomized','(1/\mu)e^{-b^2/\mu}')
@@ -753,7 +825,10 @@ classdef BicAn
                 for k=1:length(X)
                     
                     % Calculate "point-out"
-                    [~,~,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(k),X(k),false);
+                    [~,~,Bi] = bic.GetBispec(bic.sg,bic.BicVec,bic.LilGuy,Y(k),X(k),false);
+                    if isempty(Bi)
+                        return
+                    end
                     
                     switch bic.PlotType
                         case {'abs','imag','real'}
@@ -764,16 +839,16 @@ classdef BicAn
                                 plot(dumt,umm,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
                             end
                         case 'angle'
+                            ystr = [ystr '/\pi'];
                             plot(dumt,unwrap(angle(Bi))/pi,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:),...
                                 'linestyle','-.','marker','x')
                     end
                     if k==1; hold on; end
-                    pntstr{k} = sprintf('(%3.2f,%3.2f) %sHz',dum(X(k)),dum(Y(k)),bic.ScaleToString(bic.FScale));
+                    pntstr{k} = sprintf('(%3.2f,%3.2f) %sHz',dum( fLocX(k) ),dum( fLocY(k) ),bic.ScaleToString(bic.FScale));
                 end            
                 hold off
                 xlim([dumt(1) dumt(end)])
-                grid on
-                
+                grid on    
 
                 tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.TScale));
                 bic.PlotLabels({tstr,ystr},bic.FontSize,bic.CbarNorth);
@@ -785,17 +860,18 @@ classdef BicAn
         
         function bic = PlotGUI(bic)
             
-            h = figure('Position',[100 0 800 600],...
+            bic.Figure = figure('Position',[100 0 800 600],...
                 'Resize','on',...
                 'WindowKeyPressFcn',@SwitchPlot,...
-                'WindowButtonDownFcn',@ClickBispec);
+                'WindowButtonDownFcn',@ClickPlot,...
+                'DeleteFcn',@KillPlot);
             
-            bic.Axes = axes('DataAspectRatio',[1 1 1],...
-                'XLimMode','manual','YLimMode','manual',...
-                'DrawMode','fast',...
-                'Parent',h);
+            ax1 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0   0   0.5 1 ]);
+            ax2 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0.5 0.5 0.5 0.5 ]);
+            ax3 = axes('parent',bic.Figure,'DrawMode','fast','outerposition',[ 0.5 0   0.5 0.5 ]);
+            
             bic.Slider = uicontrol('Style','slider',...
-                'Parent',h,...
+                'Parent',bic.Figure,...
                 'Max',1,...
                 'Min',0,...
                 'Value',0,...
@@ -805,7 +881,7 @@ classdef BicAn
                 'SliderStep',[.01 .10]); %,...               
                 %'Callback',@(src,event)slider_cb(pss));
             
-            th = uitoolbar(h);
+            th = uitoolbar(bic.Figure);
             % Push buttons on toolbar
             img1 = rand(16,16,3);
             pth1 = uipushtool(th,'CData',img1,...
@@ -826,23 +902,23 @@ classdef BicAn
                                 'OnCallback',@PlayButton,...
                                 'OffCallback',@PauseButton);
                             
+            bic.AxHands = [ax1, ax2, ax3];
             bic.TBHands = [th, pth1, pth2, tth];
             
             bic.RefreshGUI;       
             bic.InGUI = true;
             
-            set(h,'UserData',bic);
+            set(bic.Figure,'UserData',bic);
             
         end
 
+        
         function RefreshGUI(bic)
         % ------------------
-        % Callback for clicks
-        % ------------------
-            %%%%%%%%   clf
-            ax(1) = subplot(2,2,[1 3]);
+        % One stop shop for refreshment!
+        % ------------------            
+            set(bic.Figure,'CurrentAxes',bic.AxHands(1))
                 bic.PlotBispec;
-                set(ax(1),'outerposition',[ 0 0 0.5 1 ]);
                 
                 if bic.PlotSlice~=0
                     m = bic.PlotSlice;
@@ -852,39 +928,25 @@ classdef BicAn
                                         'fontweight','bold','color','white')
                 end
                 
-            ax(2) = subplot(2,2,2);
+            set(bic.Figure,'CurrentAxes',bic.AxHands(2))
                 
                 bic.PlotSpectro;           
                 if bic.PlotSlice~=0
-                    %m = bic.PlotSlice;
-                    dt = bic.SubInt/bic.SampRate/10^bic.TScale;
-                    line([dum(m),dum(m)],[0,dum(end)],'color','white','linewidth',2)
-                    line([dum(m)+dt,dum(m)+dt],[0,dum(end)],'color','white','linewidth',2)
+                    dumf = bic.fv/10^bic.FScale;
+                    dt   = bic.SubInt/bic.SampRate/10^bic.TScale;
+                    line([dum(m),dum(m)],[0,dumf(end)],'color','white','linewidth',2)
+                    line([dum(m)+dt,dum(m)+dt],[0,dumf(end)],'color','white','linewidth',2)
                 end
-                set(ax(2),'outerposition',[ 0.5 0.5 0.5 0.5 ]);
                 
-            ax(3) = subplot(2,2,4);
+            set(bic.Figure,'CurrentAxes',bic.AxHands(3))
                 bic.PlotPowerSpec;    
-                set(ax(3),'outerposition',[ 0.5 0 0.5 0.5 ]);
                 
             tags = {'bispec','spectro','fft'};
             for k=1:3
-                set(ax(k),'Tag',tags{k});
+                set(bic.AxHands(k),'Tag',tags{k});
             end
         end % Refresh GUI
         
-        
-        function bic = Dum(bic,event)
-        % ------------------
-        % Callback for clicks
-        % ------------------
-            fprintf('Note during callback = "%s"\n',bic.Note)
-            for m=1:2:100
-                bic.PlotSlice = m;
-                bic.RefreshGUI;
-                pause(eps)
-            end
-        end 
         
         function bic = MakeMovie(bic)
         % ------------------
@@ -893,30 +955,10 @@ classdef BicAn
 
         end % MakeMovie
 
-       
-        function bic = ApplyZPad(bic)
-        % ------------------
-        % Zero-padding
-        % ------------------
-            if bic.ZPad
-                tail_error = mod(bic.Samples,bic.SubInt);
-                if tail_error~=0
-                    % Add enough zeros to make subint evenly divide samples
-                    bic.Processed = [bic.Raw zeros(bic.Nseries,bic.SubInt-tail_error)];  
-                else
-                    bic.Processed = bic.Raw;
-                end
-            else
-                % Truncate time series to fit integer number of stepped subintervals
-                samplim = bic.Step*floor((bic.Samples - bic.SubInt)/bic.Step) + bic.SubInt;
-                bic.Processed = bic.Raw(:,1:samplim);
-            end
-        end % ApplyZPad
-
         
         function bic = SizeWarnPrompt(bic,n)
         % ------------------
-        % Prompt for 
+        % Prompt for CPU health
         % ------------------
             str = sprintf('nf = %d',n);
             qwer = questdlg({'FFT elements exceed 1000...';str;'Continue?'},...
@@ -929,11 +971,21 @@ classdef BicAn
             pause(eps);
         end % SizeWarn
         
+        
+        function bic = GUIOut(bic)
+        % ------------------
+        % Get output from GUI
+        % ------------------
+            dum = get(bic.Figure,'UserData');
+            if ~isempty(dum)
+                bic = dum;
+            end
+        end
+        
     end % methods
 
-
+    %% Static methods
     methods (Static)
-
 
         function y = ApplyDetrend(y)
         % ------------------
@@ -1029,33 +1081,37 @@ classdef BicAn
         function [w,B,Bi] = GetBispec(spec,v,lilguy,j,k,rando)
         % ------------------
         % Calculates the bicoherence of a single (f1,f2) value
-        % ------------------
-
-            %p1 = spec(k,:,v(1));
-            %p2 = spec(j,:,v(2));
-            %s  = spec(j+k-1,:,v(3));
-
-            p1 = real( spec(abs(k)+1,:,v(1)) ) + 1i*sign(k)*imag( spec(abs(k)+1,:,v(1)) );
-            p2 = real( spec(abs(j)+1,:,v(2)) ) + 1i*sign(j)*imag( spec(abs(j)+1,:,v(2)) );
-            s  = real( spec(abs(j+k)+1,:,v(3)) ) + 1i*sign(j+k)*imag( spec(abs(j+k)+1,:,v(3)) );
-
-            if rando
-                p1 = abs(p1).*exp( 2i*pi*(2*rand(size(p1)) - 1) );
-                p2 = abs(p2).*exp( 2i*pi*(2*rand(size(p2)) - 1) );
-                s  = abs(s).* exp( 2i*pi*(2*rand(size(s)) - 1) );
-            end
-
-            Bi  = p1.*p2.*conj(s);
-            e12 = abs(p1.*p2).^2;
-            e3  = abs(s).^2;  
-
-            B   = sum(Bi);                    
-            E12 = sum(e12);             
-            E3  = sum(e3);                      
-
-            w = (abs(B).^2)./(E12.*E3+lilguy); 
+        % ------------------            
+            [nfreq,slices] = size(spec);
+            if abs(j+k) < nfreq
             
-            B = B/length(Bi);
+                p1 = real( spec(abs(k)+1,:,v(1)) ) + 1i*sign(k)*imag( spec(abs(k)+1,:,v(1)) );
+                p2 = real( spec(abs(j)+1,:,v(2)) ) + 1i*sign(j)*imag( spec(abs(j)+1,:,v(2)) );
+                s  = real( spec(abs(j+k)+1,:,v(3)) ) + 1i*sign(j+k)*imag( spec(abs(j+k)+1,:,v(3)) );
+
+                if rando
+                    p1 = abs(p1).*exp( 2i*pi*(2*rand(size(p1)) - 1) );
+                    p2 = abs(p2).*exp( 2i*pi*(2*rand(size(p2)) - 1) );
+                    s  = abs(s).* exp( 2i*pi*(2*rand(size(s)) - 1) );
+                end
+
+                Bi  = p1.*p2.*conj(s);
+                e12 = abs(p1.*p2).^2;
+                e3  = abs(s).^2;  
+
+                B   = sum(Bi);                    
+                E12 = sum(e12);             
+                E3  = sum(e3);                      
+
+                w = (abs(B).^2)./(E12.*E3+lilguy); 
+
+                B = B/slices;
+            else
+                w  = 0;
+                B  = 0;
+                Bi = [];
+                warning('BicAn:outofBounds','\nSelection is out of bounds... Returning null.')
+            end
         end % GetBispec
 
         
@@ -1223,28 +1279,31 @@ classdef BicAn
         % Wavelet static method
         % ------------------
 
-            Nsig = length(sig);
+            [N,Nsig] = size(sig);
             nyq  = floor(Nsig/2);
 
             f0 = samprate/Nsig;
             freq_vec = (0:nyq-1)*f0;
             
-            CWT = zeros(nyq);
+            CWT = zeros(nyq,nyq,N);
+            
+            for k=1:N
 
-            fft_sig = fft(sig);
-            fft_sig = fft_sig(1:nyq);
+                fft_sig = fft(sig(k,:));
+                fft_sig = fft_sig(1:nyq);
 
-            % Morlet wavelet in frequency space
-            Psi = @(a) (pi^0.25)*sqrt(2*sigma/a) .*...
-                exp( -2 * pi^2 * sigma^2 * ( freq_vec/a - f0).^2 );
+                % Morlet wavelet in frequency space
+                Psi = @(a) (pi^0.25)*sqrt(2*sigma/a) .*...
+                    exp( -2 * pi^2 * sigma^2 * ( freq_vec/a - f0).^2 );
 
-            fprintf('Applying CWT...      ')
-            for a=1:nyq  
-                LoadBar(a,nyq);
-                % Apply for each scale (read: frequency)
-                CWT(a,:) = ifft(fft_sig.*Psi(a)); 
+                fprintf('Applying CWT...      ')
+                for a=1:nyq  
+                    LoadBar(a,nyq);
+                    % Apply for each scale (read: frequency)
+                    CWT(a,:,k) = ifft(fft_sig.*Psi(a)); 
+                end
+                fprintf('\b\b^]\n')
             end
-            fprintf('\b\b^]\n')
 
             time_vec = (0:2:Nsig-1)/samprate;
         end % ApplyCWT
@@ -1274,7 +1333,7 @@ classdef BicAn
 
 end % BicAn
 
-
+%% Subfunctions
 function LoadBar(m,M)
 % ------------------
 % Help the user out!
@@ -1283,7 +1342,6 @@ function LoadBar(m,M)
     ch2 = '_.:"^":.';
     fprintf('\b\b\b\b\b\b%3.0f%%%s%s',100*m/M,ch1(mod(m,8)+1),ch2(mod(m,8)+1))
 end % LoadBar
-
 
 function out = CheckScales(inscale,val)
     if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
@@ -1338,8 +1396,7 @@ function SwitchPlot(obj,event)
     end
 end
 
-
-function ClickBispec(obj,~)
+function ClickPlot(obj,~)
 % ------------------
 % Callback for clicks
 % ------------------
@@ -1370,9 +1427,10 @@ function ClickBispec(obj,~)
             while button~=3 && length(X)<ClickLim
                 [x,y,button] = ginput(1);
                 if button==1 && x>=dum(1) && x<=dum(end) && y>=dum(1) && y<=dum(end)
+                    text(x,y,'x','color',0.5*[1 1 1],'fontsize',14,'fontweight','bold')
                     [~,Ix] = min(abs(dum-x));
                     [~,Iy] = min(abs(dum-y));
-                       X = [X Ix];
+                       X = [X Ix]; %#ok<*AGROW>
                        Y = [Y Iy];
                 end
             end
@@ -1381,6 +1439,34 @@ function ClickBispec(obj,~)
             end
     end
     set(obj,'UserData',bic);
+end
+
+function KillPlot(obj,~)
+% ------------------
+% Callback for exiting GUI
+% ------------------
+    bic = get(obj,'UserData');
+    % Set up dialog
+    options.Default = 'Yes!';
+    options.WindowStyle = 'modal';
+    options.Interpreter = 'TeX';
+    qwer = questdlg('Save object to workspace?',...
+        'GUISaveData?','Yes!','Rather not...',options);
+    if isequal(qwer,'Yes!') 
+        % Get variables from workspace
+        lstvars = evalin('base','who');
+        switch 'b'
+            case lstvars
+                % Output "b" for convenience
+                outstr = 'b';
+            otherwise
+                % Otherwise do generic
+                outstr = 'bicOut';
+        end
+        % Send out to workspace!
+        assignin('base',outstr,bic);
+        fprintf('\nData outputted successfully as "%s"!\n',outstr)
+    end 
 end
 
 function PlayButton(~,~)
@@ -1418,7 +1504,6 @@ function PauseButton(~,~)
     set(gcbf,'UserData',bic);
 end
 
-
 function CalcMeanButton(~,~)
 % ------------------
 % Callback for play
@@ -1427,6 +1512,4 @@ function CalcMeanButton(~,~)
     bic = bic.CalcMean(5);
     set(gcbf,'UserData',bic);
 end
-
-
 
