@@ -61,6 +61,8 @@
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/13/2022 -> Small tweak here and there; cross-coherence in main loop.
+% Fixed error in TestSignal('cross_circle'), and fiddled with power-spec
+% axes limits. Benchmarked against old code (v3.1) on DIII-D data. 
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/12/2022 -> Been messing with a bunch of things! Getting the point-outs
 % for cross-bicoherence stuff squared away, added warning for attempts to
@@ -69,7 +71,7 @@
 % finally works with cross-b^2, and "x"s are plotted where you click!
 % Finaly got to the issue with inputs to cross-wavelet-b^2 analy-sizauce.  
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-% 7/11/2022 -> Tried lke hell to dynamically adjust colorbar's height/width
+% 7/11/2022 -> Tried like hell to dynamically adjust colorbar height/width
 % to save some space in GUI... absolute catastrophe. Also, I realize now
 % that the callbacks for the GUI figure will either have to be updated as
 % the object's data is changed, or I'll need a new f^*%ing idea. [...]
@@ -369,14 +371,14 @@ classdef BicAn
                     switch dum
                         case 'input'
                             % Start getfile prompt
-                            str = uigetfile()
+                            str = uigetfile();
 
                             % {PARSE FILE...}
                         case siglist
                             % If explicit test signal (or demo), confirm with user, then recursively call ParseInputs
                             str = 'Test signal!';
                             if isequal(dum,'demo')
-                                dum = 'tone'  
+                                dum = 'circle';  
                             end
                             dumstr = sprintf('Run the "%s" demo?',dum);
 
@@ -386,7 +388,7 @@ classdef BicAn
                                 bic = bic.ParseInput({sig,'SampRate',fS});  
                             end
                         otherwise
-                            str = 'Hmmm. That string isn`t supported yet... Try ''demo''.'
+                            str = 'Hmmm. That string isn`t supported yet... Try ''demo''.';
                     end
                     disp(str)
                 else
@@ -521,40 +523,51 @@ classdef BicAn
             fS   = 200;
             tend = 100;
             noisy = 2;
+            f1 = 19;
+            f2 = 45;
             switch lower(in)
                 case 'classic'
-                    [inData,t] = bic.SignalGen(fS,tend,1,45,6,1,22,10,1,1/20,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f2,6,1,f1,10,1,1/20,noisy);
                 case 'tone'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,noisy);
                 case 'noisy'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,5*noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,5*noisy);
                 case '2tone'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,0,0,0,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,1,f2,0,0,0,noisy);
                 case '3tone'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,0,1,0,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,1,f2,0,1,0,noisy);
                 case 'line'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,1,45,10,1,1/20,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,1,f2,10,1,1/20,noisy);
                 case 'circle'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,10,1,45,10,1,1/20,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,10,1,f2,10,1,1/20,noisy);
                 case 'fast_circle'
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,5,1,45,5,1,5/20,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,5,1,f2,5,1,5/20,noisy);
+                case 'quad_couple'
+                    [x,t]  = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,noisy);
+                    y      = bic.SignalGen(fS,tend,1,f2,0,0,0,0,0,0,noisy);
+                    inData = x + y + x.*y; 
+                case 'coherence'
+                    [x,t]  = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,noisy);
+                    y      = bic.SignalGen(fS,tend,1,f2,0,0,0,0,0,0,noisy);
+                    z      = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,noisy);
+                    inData = [x; y+z]; 
                 case 'cross_2tone'
-                    [x,t]  = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,noisy);
-                    y      = bic.SignalGen(fS,tend,1,45,0,0,0,0,0,0,noisy);
+                    [x,t]  = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,noisy);
+                    y      = bic.SignalGen(fS,tend,1,f2,0,0,0,0,0,0,noisy);
                     inData = [x; x+y]; 
                 case 'cross_3tone'
-                    [x,t]  = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,noisy);
-                    y      = bic.SignalGen(fS,tend,1,45,0,0,0,0,0,0,noisy);
-                    z      = bic.SignalGen(fS,tend,1,67,0,0,0,0,0,0,noisy);
+                    [x,t]  = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,noisy);
+                    y      = bic.SignalGen(fS,tend,1,f2,0,0,0,0,0,0,noisy);
+                    z      = bic.SignalGen(fS,tend,1,f1+f2,0,0,0,0,0,0,noisy);
                     inData = [x; y; z]; 
                 case 'cross_circle'
-                    [x,t]  = bic.SignalGen(fS,tend,1,22,10,0,0,0,0,1/20,noisy);
-                    y      = bic.SignalGen(fS,tend,1,45,10,0,0,0,0,1/20,noisy);
-                    z      = bic.SignalGen(fS,tend,0,22,10,0,45,10,1,1/20,noisy);
+                    [x,t]  = bic.SignalGen(fS,tend,1,f1,10,0,0, 0, 0,1/20,noisy);
+                    y      = bic.SignalGen(fS,tend,0,0 ,0 ,1,f2,10,0,1/20,noisy);
+                    z      = bic.SignalGen(fS,tend,0,f1,10,0,f2,10,1,1/20,noisy);
                     inData = [x; y; z]; 
                 otherwise
                     warning('BicAn:unknownTest','\n"%s" test signal unknown... Using single tone.',in)
-                    [inData,t] = bic.SignalGen(fS,tend,1,22,0,0,0,0,0,0,0);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,0,0,0,0,0,0);
             end        
         end % TestSignal   
 
@@ -706,11 +719,15 @@ classdef BicAn
                 if k==1; hold on; end
             end
             hold off
-            %ylim([1e-10 1e1]) %%%%%%%%%
+            
+            %%% test this!
+            maxspec = ceil( log10( max(abs(bic.sg(:))) ) );
+            ylim([1e-5 10^maxspec]) 
             xlim([bic.fv(1)/10^bic.FScale bic.fv(end)/10^bic.FScale])
             grid on
             
-            %set(gca,'xticklabels',linspace(bic.fv(1),bic.fv(end)+bic.fv(1),6));
+            set(gca,'ytick',exp(-(5:-1:maxspec)*log(10)))
+            set(gca,'xtick',linspace(0,bic.SampRate/2/10^bic.FScale,6));
             fstr = sprintf('f_n [%sHz]',bic.ScaleToString(bic.FScale));
             bic.PlotLabels({fstr,'|P|^2 [arb.]'},bic.FontSize,bic.CbarNorth);
         end % PlotPowerSpec
@@ -728,8 +745,9 @@ classdef BicAn
                 sstr = 'log_{10}|W(t,f)|^2';
             end
             for k=1:bic.Nseries
-                %figure1q
+                %figure
                 imagesc(bic.tv/10^bic.TScale,bic.fv/10^bic.FScale,2*log10(abs(bic.sg(:,:,k))));
+                %imagesc(bic.tv/10^bic.TScale,bic.fv/10^bic.FScale,abs(bic.sg));
                 bic.PlotLabels({tstr,fstr,sstr},bic.FontSize,bic.CbarNorth);
                 colormap(bic.CMap);
             end
@@ -828,7 +846,7 @@ classdef BicAn
 
             if isequal(bic.PlotType,'bicoh')
                 
-                Ntrials = 1000; 
+                Ntrials = 2000; 
                 g = zeros(1,Ntrials);
                 xstr = sprintf('(%3.1f,%3.1f) %sHz',dum( fLocX(1) ),dum( fLocY(1) ),bic.ScaleToString(bic.FScale));
                 
@@ -840,7 +858,7 @@ classdef BicAn
                 fprintf('\b\b^]\n')  
                 
                 % Limit b^2, create vector, and produce histogram 
-                b2lim = 0.2;
+                b2lim = 0.5;
                 b2vec = linspace(0,b2lim,1000);
                 cnt = hist(g,b2vec);
 
@@ -848,18 +866,21 @@ classdef BicAn
                 intcnt = sum(cnt)*(b2vec(2)-b2vec(1));
                 % exp dist -> (1/m)exp(-x/m)
                 m = mean(g);
-                plot(b2vec,cnt/intcnt,'linewidth',bic.LineWidth,'color',bic.LineColor(110,:))
+                plot(b2vec,smooth(cnt/intcnt,10),'linewidth',bic.LineWidth,'color',bic.LineColor(110,:),'marker','x','linestyle','none')
                 hold on
-                plot(b2vec,(1/m)*exp(-b2vec/m).*(1-b2vec),'linewidth',bic.LineWidth,'color','red'); 
+                % More accurate distibution... Just more complicated! (Get to it later...)
+                %semilogy(b2vec,(1/m)*exp(-b2vec/m).*(1-b2vec),'linewidth',bic.LineWidth,'color','red'); 
+                plot(b2vec,(1/m)*exp(-b2vec/m),'linewidth',bic.LineWidth,'color','red'); 
 
                 bic.PlotLabels({['b^2' xstr],'Probability density'},bic.FontSize,bic.CbarNorth);
                 grid on
+                axis tight
                 legend('randomized','(1/\mu)e^{-b^2/\mu}')
                 
             else
 
                 pntstr = cell(1,length(X));
-                dumt = bic.tv/10^bic.FScale;
+                dumt = bic.tv/10^bic.TScale;
                 for k=1:length(X)
                     
                     % Calculate "point-out"
@@ -877,7 +898,6 @@ classdef BicAn
                                 plot(dumt,umm,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
                             end
                         case 'angle'
-                            ystr = [ystr '/\pi'];
                             plot(dumt,unwrap(angle(Bi))/pi,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:),...
                                 'linestyle','-.','marker','x')
                     end
@@ -888,6 +908,7 @@ classdef BicAn
                 xlim([dumt(1) dumt(end)])
                 grid on    
 
+                if isequal(bic.PlotType,'angle'); ystr = [ystr '/\pi']; end
                 tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.TScale));
                 bic.PlotLabels({tstr,ystr},bic.FontSize,bic.CbarNorth);
 
@@ -924,16 +945,12 @@ classdef BicAn
             
             th = uitoolbar(bic.Figure);
             % Push buttons on toolbar
-
-            dum = load('test_pic.mat');
-            %img1 = rand(16,16,3);
-            img1 = dum.M;
-
+            img1 = rand(16,16,3);
             pth1 = uipushtool(th,'CData',img1,...
                        'TooltipString','My push tool',...
                        'HandleVisibility','off');
                    
-            img2 = rand(20,20,3);
+            img2 = rand(16,16,3);
             pth2 = uipushtool(th,'CData',img2,...
                        'TooltipString','CalcMean()',...
                        'HandleVisibility','off',...
@@ -1380,7 +1397,7 @@ function out = CheckScales(inscale,val)
     if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
         out = val;
     else
-        warning('BicAn:scaleFail','\nIncompatable time scale requested.')
+        warning('BicAn:scaleFail','\nIncompatable scale requested. Using ''''')
         out = inscale; 
     end   
 end
@@ -1419,7 +1436,6 @@ function SwitchPlot(obj,event)
             elseif isequal(press,'S') 
                 bic.PlotType = 'std';
             end
-            
             % Activate!
             bic.RefreshGUI;
             set(obj,'UserData',bic);
