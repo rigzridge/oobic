@@ -45,7 +45,7 @@
 % fscale    -> scale for plotting frequencies [default :: 0]
 % justspec  -> true for just spectrogram [default :: false]
 % lilguy    -> set epsilon [default :: 1e-6]
-% note      -> optional string for documentation [default :: {DATE & TIME}] 
+% note      -> optional string for documentation [default :: ' '] 
 % plotit    -> start plotting tool when done [default :: false]
 % plottype  -> set desired plottable [default :: 'bicoh']
 % samprate  -> sampling rate in Hz [default :: 1]
@@ -61,6 +61,8 @@
 % zpad      -> add zero-padding to end of time-series [default :: true]
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/09/2022 -> Mostly messed with PyBic... Small clean-up here and there.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/08/2022 -> Made get.Samples check branchless, and added get.Raw check;
 % adjusted "ProcessData" method to stop plotting, now PlotIt = true goes
@@ -251,15 +253,19 @@ classdef BicAn
         % "Set" functions
         % ------------------  
         function bic = set.Raw(bic,val)     % Checks for raw data
-            dum = size(val);                % Get data dimensions
-            if dum(1)>dum(2)                % Check if column vector
-                val = val.';                % Transpose
-                dum = fliplr(dum);          % Flip dimensions
+            if isnumeric(val)
+                dum = size(val);                % Get data dimensions
+                if dum(1)>dum(2)                % Check if column vector
+                    val = val.';                % Transpose
+                    dum = fliplr(dum);          % Flip dimensions
+                end
+                if dum(1)>3
+                    error('BicAn:Input','Invalid input!\nMaximum time-series is 3...\nSee "help BicAn"'); 
+                end
+                bic.Raw = val;
+            else
+                error('BicAn:Input','Invalid input!\ninData must be numeric!\nSee "help BicAn"'); 
             end
-            if dum(1)>3
-                error('BicAn:Input','Invalid input!\nMaximum time-series is 3...\nSee "help BicAn"'); 
-            end
-            bic.Raw = val;
         end
         function bic = set.Window(bic,val)  % Checks for window
             bic.Window = lower(val);
@@ -341,11 +347,11 @@ classdef BicAn
                 % These input checks must be done in this order! Can't use set.Property functions =^\
                 bic.SubInt = floor(abs(bic.SubInt));       % Remove sign and decimals
                 if bic.SubInt==0 || bic.SubInt>bic.Samples % Check subinterval <= total samples
-                    bic.SubInt = min(512,bic.Samples);     % Choose 512 as long as data isn't short
+                    bic.SubInt = min(512,bic.Samples);     % Choose 512 as long as data isn't too short
                     warning('BicAn:subintWarn','Subinterval too large for time-series... Using %d.',bic.SubInt)
                 end
 
-                bic.FreqRes = floor(abs(bic.FreqRes));     % Remove sign and decimals
+                bic.FreqRes = abs(bic.FreqRes);            % Remove sign
                 if bic.FreqRes==0                          % Check max res option
                    bic.FreqRes = bic.MaxRes;               % Maximum resolution  
                 elseif bic.FreqRes<bic.MaxRes || bic.FreqRes>bic.SampRate/2
@@ -479,10 +485,10 @@ classdef BicAn
                 bic.SizeWarnPrompt(length(bic.Processed));
             end 
 
-            [CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
-            %for k=1:bic.Nseries
-            %    [CWT(:,:,k),f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
-            %end
+            %[CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
+            for k=1:bic.Nseries
+                [CWT(:,:,k),f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
+            end
 
             bic.tv = t;
             bic.fv = f;
@@ -609,6 +615,9 @@ classdef BicAn
 
 
         function [dum,cbarstr] = WhichPlot(bic)
+        % ------------------
+        % Helper method for plots
+        % ------------------
             guy = bic.PlotType;
             switch guy
                 case 'bicoh'
@@ -809,8 +818,9 @@ classdef BicAn
                 if tail_error~=0
                     % Add enough zeros to make subint evenly divide samples
                     bic.Processed = [bic.Raw zeros(bic.Nseries,bic.SubInt-tail_error)];  
+                else
+                    bic.Processed = bic.Raw;
                 end
-                bic.Processed = bic.Raw;
             else
                 % Truncate time series to fit integer number of stepped subintervals
                 samplim = bic.Step*floor((bic.Samples - bic.SubInt)/bic.Step) + bic.SubInt;
