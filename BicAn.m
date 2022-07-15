@@ -50,9 +50,18 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-% 6/29/2022 -> Added checks in set.Window, and wavelet static method. Started
+% 6/30/2022 -> Lost time today due to a fiasco with my DPP poster. In any
+% case, I've cleaned up a couple things, added support for auto-labeling of
+% time and frequency axes, and started moving <b2> routine over. Somewhat
+% worried that I haven't made a cross-bispectrum yet... Debugged the input
+% parsing for multiple time-series. Mean and std dev of b2 now implemented.
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 6/29/2022 -> Added wavelet stat. method and checks in set.Window. Started
 % to ease into plotting support -> spectrograms implemented, also brought 
 % "PlotLabels" over from pplk_bispec. Fixed FreqRes issue when nargin==1.
+% Added 2 static methods for bispectral stuff: 1) for individual points,
+% where random phases can be used to find PDFs, and 2) for fast production 
+% of B and b2 maps from spectrograms.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 6/28/2022 -> Fixed a couple things! Moved initial (default) values to 
 % "properties" block, added some access-protected props, and implemented
@@ -71,6 +80,7 @@ classdef BicAn
     % Globals 
     properties (Constant)
         FontSize = 20;
+        WarnSize = 1000;
     end
 
     % Dependents
@@ -103,8 +113,8 @@ classdef BicAn
         JustSpec  = false;
         SpecType  = 'stft';
         ErrLim    = inf;
-        FScale    = 1;
-        TScale    = 1;
+        FScale    = 0;
+        TScale    = 0;
         Filter    = 'none';
         Bispectro = false;
         Smooth    = 1;
@@ -112,6 +122,7 @@ classdef BicAn
         LilGuy    = 1e-6;
         SizeWarn  = true;
         CMap      = 'viridis';
+        CbarNorth = true;
         PlotType  = 'bicoh';
         ScaleAxes = 'manual';
         Verbose   = true;
@@ -133,6 +144,8 @@ classdef BicAn
         bp = []; % Biphase proxy
         bg = []; % Bispectrogram
         er = []; % Mean & std dev of FFT
+        mb = []; % Mean b^2
+        sb = []; % Std dev of b^2
     end % properties
 
     % Functions
@@ -178,9 +191,23 @@ classdef BicAn
             try
                 window(val,10);  % Try MATLAB's windowing function
             catch winbeef 
-                warning('BicAn:wrongWindow','\n"%s" window unknown... Using Hanning.',bic.Window)
+                warning('BicAn:wrongWindow','\n"%s" window unknown... Using Hann.',bic.Window)
                 bic.Window = 'hann';
             end
+        end
+        function bic = set.TScale(bic,val)
+            if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
+                bic.TScale = val;
+            else
+                warning('BicAn:scaleFail','\nIncompatable time scale requested.')
+            end                
+        end
+        function bic = set.FScale(bic,val)
+            if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
+                bic.FScale = val;
+            else
+                warning('BicAn:scaleFail','\nIncompatable frequency scale requested.')
+            end                
         end
 
         function bic = ParseInput(bic,vars)
@@ -189,6 +216,17 @@ classdef BicAn
         % ------------------
             Ninputs = length(vars);
             bic.RunBicAn = true;
+            
+            if isnumeric(vars{1})
+                [nrows,ncols] = size(vars{1});   % Get data dimensions
+                if nrows>ncols % Check if column vector
+                    vars{1} = vars{1}.';     % Transpose
+                end
+                if bic.Nseries>3
+                    error('Bispec:Input','Invalid input!\nMaximum time-series is 3...\nSee "help BicAn"'); 
+                end
+            end
+            
             if Ninputs==1
                 if isobject(vars{1})
                     % If object, output or go to GUI
@@ -204,7 +242,8 @@ classdef BicAn
                     error('BicAn:improperInput','\nInput must be BicAn... object or array. "%s" class is not supported.',...
                         class(vars{1}))
                 end
-            elseif Ninputs>1
+            else
+                fprintf(' Checking inputs...') 
                 % Parse user-defined inputs
                 bic.Raw = vars{1};
                 options = fieldnames(bic); % Should I use properties(...) instead?
@@ -256,6 +295,7 @@ classdef BicAn
                     bic.Step = floor(bic.SubInt/4);        % This seems fine?
                     warning('BicAn:stepError','Step must be nonzero and less than subint... Using %d.',bic.Step)     
                 end
+                fprintf('done.\n')
 
             end
         end % ParseInput
@@ -265,6 +305,7 @@ classdef BicAn
         % ------------------
         % Main processing loop
         % ------------------
+            tic
             bic = bic.ApplyZPad;
             if isequal(bic.SpecType,'stft')
                 bic = bic.SpectroSTFT;
@@ -273,10 +314,17 @@ classdef BicAn
             end
             
             if ~bic.JustSpec
-                bic = bic.Bispec;
+                bic = bic.Bicoherence;
+                bic.PlotBispec;
             end
             
+            toc
+            
             bic.PlotSpectro;
+            
+            if bic.Verbose
+                disp(bic)
+            end
             
             
         end % ProcessData
@@ -299,7 +347,9 @@ classdef BicAn
             
             bic.tv = t;
             bic.fv = f;
-            bic.ft = mean(abs(spec'));    
+            for k=1:bic.Nseries
+                bic.ft(k,:) = mean(abs(spec(:,:,k)'));
+            end
             bic.sg = spec;
             bic.er = err;        
         end % SpectroSTFT
@@ -313,6 +363,10 @@ classdef BicAn
                 bic.Processed = bic.ApplyDetrend(bic.Processed);
             end
             bic.Processed = bic.Processed - mean(bic.Processed);
+            
+            if length(bic.Processed)>bic.WarnSize && bic.SizeWarn
+                bic.SizeWarnPrompt(length(bic.Processed));
+            end 
 
             [CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
 
@@ -327,11 +381,50 @@ classdef BicAn
         % ------------------
         % Plot spectrograms
         % ------------------
-            cbarNorth = true;
-            imagesc(bic.tv,bic.fv,log10(abs(bic.sg)));
-            bic.PlotLabels({'Time [s]','f [Hz]','log_{10}|P(t,f)|'},bic.FontSize,cbarNorth);
-            colormap(bic.CMap);
+            tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.TScale));
+            fstr = sprintf('f [%sHz]',bic.ScaleToString(bic.FScale));
+            if isequal(bic.SpecType,'stft')
+                sstr = 'log_{10}|P(t,f)|';
+            else
+                sstr = 'log_{10}|W(t,f)|';
+            end
+            for k=1:bic.Nseries
+                figure
+                imagesc(bic.tv/10^bic.TScale,bic.fv/10^bic.FScale,log10(abs(bic.sg(:,:,k))));
+                bic.PlotLabels({tstr,fstr,sstr},bic.FontSize,bic.CbarNorth);
+                colormap(bic.CMap);
+            end
         end % PlotSpectro
+        
+        
+        function bic = PlotBispec(bic)
+        % ------------------
+        % Plot bispectrum
+        % ------------------
+            guy = bic.PlotType;
+            switch guy
+                case 'bicoh'
+                    dum = bic.bc;
+                    cbarstr = 'b^2(f_1,f_2)';
+                case {'abs','real','imag','angle'}
+                    dum = eval(sprintf('%s(bic.bs)',guy));
+                    cbarstr = sprintf('%s%s B(f_1,f_2)',upper(guy(1)),guy(2:end));
+            end
+
+            figure;
+            f = bic.fv/10^bic.FScale;
+            imagesc(f,f/2,dum) 
+            
+            fstr1 = sprintf('f_1 [%sHz]',bic.ScaleToString(bic.FScale));
+            fstr2 = sprintf('f_2 [%sHz]',bic.ScaleToString(bic.FScale));
+            bic.PlotLabels({fstr1,fstr2,cbarstr},bic.FontSize,bic.CbarNorth);
+            
+            colormap(bic.CMap);
+
+            %ylim([0 f(end)/2]); 
+            line([0 f(end)/2],[0 f(end)/2],'linewidth',2.5,'color',0.5*[1 1 1])
+            line([f(end)/2 f(end)],[f(end)/2 0],'linewidth',2.5,'color',0.5*[1 1 1])
+        end % PlotBispec
 
         
         function bic = Coherence(bic)
@@ -346,27 +439,49 @@ classdef BicAn
         % Wavelet method
         % ------------------
             % Check cross-stuff
-            v = [1 1 1];
-            [w,B] = bic.SpecToBispec(bic.sg,v,bic.LilGuy);
+            v = [1 2 3];
+            [b2,B] = bic.SpecToBispec(bic.sg,v,bic.LilGuy);
 
             bic.bs = B;
-            bic.bc = w;
+            bic.bc = b2;
         end % Bicoherence
 
-        function bic = Confidence(bic)
+        
+        function bic = CalcMean(bic,Ntrials)
         % ------------------
-        % Find confidence interval
+        % Calculate mean of b^2
         % ------------------
+            [n,m,r] = size(bic.sg);
+            v = [1 1 1];
+            A = abs(bic.sg);
+            
+            if nargin==0; Ntrials = 100; end
+            bic.mb = zeros(floor(n/2),n);
 
+            bic.sb = bic.mb;
+            for k=1:Ntrials
+
+                P = exp( 2i*pi*(2*rand(n,m,r) - 1) );
+
+                dum = bic.SpecToBispec(A.*P,v,bic.LilGuy);
+                old_est = bic.mb/(k - 1 + eps);
+
+                bic.mb = bic.mb + dum;
+                % "Online" algorithm for variance 
+                bic.sb = bic.sb + (dum - old_est).*(dum - bic.mb/k);
+            end
+
+            bic.mb = bic.mb/Ntrials;
+            bic.sb = bic.sb/(Ntrials-1);
         end % Confidence
 
 
-        function bic = Plot(bic)
+        function bic = PlotConfidence(bic)
         % ------------------
-        % Plot stuff
+        % Plot confidence interval
         % ------------------
 
-        end % Plot
+        end % PlotConfidence
         
 
         function bic = PlotGUI(bic)
@@ -403,12 +518,29 @@ classdef BicAn
                     % Add enough zeros to make subint evenly divide samples
                     bic.Processed = [bic.Raw zeros(bic.Nseries,bic.SubInt-tail_error)];  
                 end
+                bic.Processed = bic.Raw;
             else
                 % Truncate time series to fit integer number of stepped subintervals
                 samplim = bic.Step*floor((bic.Samples - bic.SubInt)/bic.Step) + bic.SubInt;
                 bic.Processed = bic.Raw(:,1:samplim);
             end
         end % ApplyZPad
+        
+        function bic = SizeWarnPrompt(bic,n)
+        % ------------------
+        % Prompt for 
+        % ------------------
+            str = sprintf('nf = %d',n);
+            qwer = questdlg({'FFT elements exceed 1000...';str;'Continue?'},...
+                'FFTWarning','Absolutely!','No way...','No way...');
+            pause(eps)
+            if ~isequal(qwer,'Absolutely!') 
+                fprintf('\nOperation terminated by user.\n')
+                return         % Bail if that seems scary! 
+            end
+            pause(eps);
+        end % SizeWarn
+        
 
     end % methods
 
@@ -419,10 +551,12 @@ classdef BicAn
         % ------------------
         % Remove linear trend
         % ------------------
+           fprintf(' Applying detrend...') 
            n = length(y);
            s = (6/(n*(n^2-1)))*(2*sum((1:n).*y) - sum(y)*(n+1));
            % Convenient form assuming x = 1:n
            y = y - s*(1:n);
+           fprintf('done.\n')
         end % ApplyDetrend
         
         
@@ -434,12 +568,12 @@ classdef BicAn
 
             lim = nfreq;
 
-            B = zeros(lim);
-            w = zeros(lim);
+            B = zeros(floor(lim/2),lim);
+            w = zeros(floor(lim/2),lim);
             
-            fprintf(' Working...      ')
+            fprintf(' Working...      ')     
             for j=1:floor(lim/2)+1
-                LoadingBar(j,floor(lim/2)+1);
+                LoadBar(j,floor(lim/2)+1);
                 
                 for k=j:lim-j+1
                     
@@ -495,6 +629,9 @@ classdef BicAn
 
             w = (abs(B).^2)./(E12.*E3+lilguy); 
         end
+        
+        
+        
         
         
         function win = HannWindow(N)
@@ -555,12 +692,21 @@ classdef BicAn
                 'yminortick','on'); 
         end % PlotLabels
         
+        function s = ScaleToString(scale)
+        % ------------------
+        % Frequency scaling
+        % ------------------
+            tags = {'n',[],[],'\mu',[],[],'m','c','d','',...
+                    [],[],'k',[],[],'M',[],[],'G',[],[],'T'};   
+            s = tags{10+scale};
+        end % ScaleToString
+        
         
         function [spec,freq_vec,time_vec,err,Ntoss] = ApplySTFT(sig,samprate,subint,step,windoe,nfreq,t0,detrend,errlim,smoo)
         % ------------------
         % STFT static method
         % ------------------
-            [N,~] = size(sig);          % Total samples
+            [N,~] = size(sig);          % Number of time-series
             M = 1 + floor( (length(sig) - subint)/step );
             lim  = floor(nfreq/2);      % lim = |_ Nyquist/res _|
             time_vec = zeros(1,M);      % Time vector
@@ -577,9 +723,10 @@ classdef BicAn
             end
             
             fprintf(' Working...      ')
+            
             for m=1:M
-                LoadingBar(m,M);
-                
+                LoadBar(m,M);
+               
                 time_vec(m) = t0 + (m-1)*step/samprate;
                 for k=1:N
                     Ym = sig(k,(1:subint) + (m-1)*step); % Select subinterval     
@@ -637,13 +784,13 @@ classdef BicAn
 
             fprintf(' Working...      ')
             for a=1:nyq  
-                LoadingBar(a,nyq);
+                LoadBar(a,nyq);
                 % Apply for each scale (read: frequency)
                 CWT(a,:) = ifft(fft_sig.*Psi(a)); 
             end
             fprintf('\b\b^]\n')
 
-            time_vec = (0:Nsig-1)/samprate;
+            time_vec = (0:2:Nsig-1)/samprate;
         
         end % ApplyCWT
             
@@ -653,7 +800,7 @@ classdef BicAn
 end % BicAn
 
 
-function LoadingBar(m,M)
+function LoadBar(m,M)
 % ------------------
 % Help the user out!
 % ------------------
@@ -661,5 +808,8 @@ function LoadingBar(m,M)
     ch2 = {'_','.',':','''','^','''',':','.'};
     %fprintf(' Working...      ')
     fprintf('\b\b\b\b\b\b%3.0f%%%s%s',100*m/M,ch1{mod(m,8)+1},ch2{mod(m,8)+1})
-end % LoadingBar
+end % LoadBar
+
+
+
 
