@@ -242,7 +242,7 @@ classdef BicAn
                 bic.FreqRes = floor(abs(bic.FreqRes));     % Remove sign and decimals
                 if bic.FreqRes==0                          % Check max res option
                    bic.FreqRes = bic.MaxRes;               % Maximum resolution  
-                else bic.FreqRes<bic.MaxRes || bic.FreqRes>bic.SampRate/2
+                elseif bic.FreqRes<bic.MaxRes || bic.FreqRes>bic.SampRate/2
                     warning('Bispec:resWarn','Requested resolution not possible... Using maximum.')
                     bic.FreqRes = bic.MaxRes;
                 end
@@ -265,7 +265,20 @@ classdef BicAn
         % ------------------
         % Main processing loop
         % ------------------
-
+            bic = bic.ApplyZPad;
+            if isequal(bic.SpecType,'stft')
+                bic = bic.SpectroSTFT;
+            else
+                bic = bic.SpectroWavelet;
+            end
+            
+            if ~bic.JustSpec
+                bic = bic.Bispec;
+            end
+            
+            bic.PlotSpectro;
+            
+            
         end % ProcessData
 
 
@@ -280,17 +293,15 @@ classdef BicAn
         function bic = SpectroSTFT(bic)
         % ------------------
         % STFT method
-        % ------------------
-        
-            [spec,afft,f,t,err,Ntoss] = bic.ApplySTFT(bic.Processed,bic.SampRate,bic.SubInt,...
+        % ------------------     
+            [spec,f,t,err,Ntoss] = bic.ApplySTFT(bic.Processed,bic.SampRate,bic.SubInt,...
                 bic.Step,bic.Window,bic.NFreq,bic.TZero,bic.Detrend,bic.ErrLim,bic.Smooth);
             
             bic.tv = t;
             bic.fv = f;
-            bic.ft = afft;    
+            bic.ft = mean(abs(spec'));    
             bic.sg = spec;
-            bic.er = err;
-            
+            bic.er = err;        
         end % SpectroSTFT
         
 
@@ -298,7 +309,6 @@ classdef BicAn
         % ------------------
         % Wavelet method
         % ------------------
-
             if bic.Detrend
                 bic.Processed = bic.ApplyDetrend(bic.Processed);
             end
@@ -308,25 +318,22 @@ classdef BicAn
 
             bic.tv = t;
             bic.fv = f;
-            bic.ft = mean(CWT);    
+            bic.ft = mean(abs(CWT'));    
             bic.sg = CWT;
-
         end % SpectroWavelet
-
-
+  
+        
         function bic = PlotSpectro(bic)
         % ------------------
         % Plot spectrograms
         % ------------------
-
             cbarNorth = true;
             imagesc(bic.tv,bic.fv,log10(abs(bic.sg)));
             bic.PlotLabels({'Time [s]','f [Hz]','log_{10}|P(t,f)|'},bic.FontSize,cbarNorth);
             colormap(bic.CMap);
-
         end % PlotSpectro
 
-
+        
         function bic = Coherence(bic)
         % ------------------
         % Cross-spectrum/coh
@@ -334,14 +341,17 @@ classdef BicAn
 
         end % Coherence
 
-        
         function bic = Bicoherence(bic)
         % ------------------
-        % STFT method
+        % Wavelet method
         % ------------------
+            % Check cross-stuff
+            v = [1 1 1];
+            [w,B] = bic.SpecToBispec(bic.sg,v,bic.LilGuy);
 
+            bic.bs = B;
+            bic.bc = w;
         end % Bicoherence
-
 
         function bic = Confidence(bic)
         % ------------------
@@ -416,6 +426,77 @@ classdef BicAn
         end % ApplyDetrend
         
         
+        function [w,B] = SpecToBispec(spec,v,lilguy)
+        % ------------------
+        % Turns spectrogram to b^2
+        % ------------------
+            [nfreq,~] = size(spec); 
+
+            lim = nfreq;
+
+            B = zeros(lim);
+            w = zeros(lim);
+            
+            fprintf(' Working...      ')
+            for j=1:floor(lim/2)+1
+                LoadingBar(j,floor(lim/2)+1);
+                
+                for k=j:lim-j+1
+                    
+                    p1 = spec(k,:,v(1));
+                    p2 = spec(j,:,v(2));
+                    s  = spec(j+k-1,:,v(3));
+
+                    Bi  = p1.*p2.*conj(s);
+                    e12 = abs(p1.*p2).^2;
+                    e3  = abs(s).^2;  
+
+                    Bjk = sum(Bi);                    
+                    E12 = sum(e12);             
+                    E3  = sum(e3);                      
+
+                    w(j,k) = (abs(Bjk).^2)./(E12.*E3+lilguy); 
+
+                    B(j,k) = Bjk;
+
+                end
+            end
+            fprintf('\b\b^]\n')
+                    
+        end % SpecToBispec
+        
+        
+        function [w,B,Bi] = GetBispec(spec,v,lilguy,j,k,rando)
+        % ------------------
+        % Calculates the bicoherence of a single (f1,f2) value
+        % ------------------
+
+            p1 = spec(k,:,v(1));
+            p2 = spec(j,:,v(2));
+            s  = spec(j+k-1,:,v(3));
+
+            % Negatives
+            %p2 = conj(spec(j,:));
+            %s  = conj(spec(j+k-1,:));
+
+            if rando
+                p1 = abs(p1).*exp( 2i*pi*(2*rand(size(p1)) - 1) );
+                p2 = abs(p2).*exp( 2i*pi*(2*rand(size(p2)) - 1) );
+                s  = abs(s).* exp( 2i*pi*(2*rand(size(s)) - 1) );
+            end
+
+            Bi  = p1.*p2.*conj(s);
+            e12 = abs(p1.*p2).^2;
+            e3  = abs(s).^2;  
+
+            B   = sum(Bi);                    
+            E12 = sum(e12);             
+            E3  = sum(e3);                      
+
+            w = (abs(B).^2)./(E12.*E3+lilguy); 
+        end
+        
+        
         function win = HannWindow(N)
         % ------------------
         % Hann window
@@ -456,7 +537,6 @@ classdef BicAn
         % Convenience function
         % ------------------
             n = length(strings);
-            %fsize = 14;
             fweight = 'bold';
             xlabel(strings{1},'fontsize',fsize,'fontweight','bold')
             if n>1; ylabel(strings{2},'fontsize',fsize,'fontweight','bold'); end;
@@ -469,21 +549,22 @@ classdef BicAn
                     ylabel(cbar,strings{3},'fontsize',fsize,'fontweight','bold')
                 end
             end
-            set(gca,'YDir','normal','fontsize',fsize,'xminortick','on','yminortick','on'); % YDir is crucial w/ @imagesc!
+            set(gca,'YDir','normal',...  YDir is crucial w/ @imagesc!
+                'fontsize',fsize,...
+                'xminortick','on',...
+                'yminortick','on'); 
         end % PlotLabels
         
         
-        function [spec,afft,freq_vec,time_vec,err,Ntoss] = ApplySTFT(sig,samprate,subint,step,windoe,nfreq,t0,detrend,errlim,smoo)
+        function [spec,freq_vec,time_vec,err,Ntoss] = ApplySTFT(sig,samprate,subint,step,windoe,nfreq,t0,detrend,errlim,smoo)
         % ------------------
         % STFT static method
         % ------------------
-        
             [N,~] = size(sig);          % Total samples
             M = 1 + floor( (length(sig) - subint)/step );
-            lim  = floor(nfreq/2);      % lim = |_Nyquist/res_| is matrix size
+            lim  = floor(nfreq/2);      % lim = |_ Nyquist/res _|
             time_vec = zeros(1,M);      % Time vector
             err  = zeros(N,M);          % Mean information
-            afft = zeros(N,lim);        % Welch power spectral density
             spec = zeros(lim,M,N);      % Spectrogram
             fft_coeffs = zeros(N,lim);  % Coeffs for slice
             Ntoss = 0;                  % Number of removed slices
@@ -492,10 +573,13 @@ classdef BicAn
                 win = window(windoe,nfreq)';  % Try MATLAB's windowing function
             catch winbeef 
                 warning('BicAn:wrongWindow','\n"%s" window unknown... Using Hanning.',windoe)
-                win = sin(pi*(0:nfreq-1)/(nfreq-1)).^2; % Apply Hann window
+                win = sin(pi*(0:nfreq-1)/(nfreq-1)).^12; % Apply Hann window
             end
             
+            fprintf(' Working...      ')
             for m=1:M
+                LoadingBar(m,M);
+                
                 time_vec(m) = t0 + (m-1)*step/samprate;
                 for k=1:N
                     Ym = sig(k,(1:subint) + (m-1)*step); % Select subinterval     
@@ -522,12 +606,11 @@ classdef BicAn
                     spec(:,m,k) = fft_coeffs(k,:);           % Build spectrogram
 
                 end
-                afft = afft + abs(fft_coeffs);  % Welch's power spectral density (PSD)
             end
+            fprintf('\b\b^]\n')
             
             freq_vec = (0:nfreq-1)*samprate/nfreq;
-            freq_vec = freq_vec(1:lim);
-            afft = afft/M;    
+            freq_vec = freq_vec(1:lim); 
             
         end % ApplySTFT
         
@@ -552,10 +635,13 @@ classdef BicAn
             Psi = @(a) (pi^0.25)*sqrt(2*sigma/a) .*...
                 exp( -2 * pi^2 * sigma^2 * ( freq_vec/a - f0).^2 );
 
+            fprintf(' Working...      ')
             for a=1:nyq  
+                LoadingBar(a,nyq);
                 % Apply for each scale (read: frequency)
                 CWT(a,:) = ifft(fft_sig.*Psi(a)); 
             end
+            fprintf('\b\b^]\n')
 
             time_vec = (0:Nsig-1)/samprate;
         
@@ -567,5 +653,13 @@ classdef BicAn
 end % BicAn
 
 
-
+function LoadingBar(m,M)
+% ------------------
+% Help the user out!
+% ------------------
+    ch1 = {'|','|','/','-','\','|','|','|'};  
+    ch2 = {'_','.',':','''','^','''',':','.'};
+    %fprintf(' Working...      ')
+    fprintf('\b\b\b\b\b\b%3.0f%%%s%s',100*m/M,ch1{mod(m,8)+1},ch2{mod(m,8)+1})
+end % LoadingBar
 
