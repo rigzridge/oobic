@@ -62,6 +62,13 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/11/2022 -> Tried lke hell to dynamically adjust colorbar's height/width
+% to save some space in GUI... absolute catastrophe. Also, I realize now
+% that the callbacks for the GUI figure will either have to be updated as
+% the object's data is changed, or I'll need a new fucking idea.
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/10/2022 -> Working on GUI stuff... Real slog
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/09/2022 -> Mostly messed with PyBic... Small clean-up here and there.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/08/2022 -> Made get.Samples check branchless, and added get.Raw check;
@@ -134,6 +141,9 @@
 % **Fix issue with cross-bicoh and grabbing points
 
 
+% **WTF IS HAPPENING WITH INGUI NOT SETTING?
+
+
 classdef BicAn
 % Bicoherence analysis class for DSP
 
@@ -154,7 +164,7 @@ classdef BicAn
     end
     
     % Private
-    properties (Access=private)
+    properties (Access=public)
         InGUI     = false;
         RunBicAn  = false;
         NormToNyq = false;
@@ -198,6 +208,11 @@ classdef BicAn
         Cross     = false;
         Vector    = false;
         TZero     = 0;
+        PlotSlice = 0; 
+        
+        TBHands   = [];
+        IsPlaying = false;
+        
         tv = []; % Time vector
         fv = []; % Frequency vector
         ff = []; % Full frequency vector
@@ -397,8 +412,10 @@ classdef BicAn
                 disp(bic)
             end       
 
-            if bic.PlotIt
-                bic.PlotGUI;
+            if bic.PlotIt       
+                bic.Note = 'Testing, bitch!';
+                
+                bic.DumGUI
             end
 
         end % ProcessData
@@ -408,7 +425,7 @@ classdef BicAn
         % ------------------
         % Provides FM test signal
         % ------------------
-            fS   = 200;
+            fS   = 400;
             tend = 100;
             noisy = 2;
             switch lower(in)
@@ -657,8 +674,14 @@ classdef BicAn
         % ------------------
         % Plot power spectrum
         % ------------------
+            if bic.PlotSlice~=0
+                dum = abs(bic.sg(:,bic.PlotSlice,:).').^2;
+            else
+                dum = bic.ft;
+            end
+        
             for k=1:bic.Nseries
-                semilogy(bic.fv,bic.ft(k,:),'linewidth',bic.LineWidth,'color',bic.LineColor(70+40*k,:))
+                semilogy(bic.fv,dum(k,:),'linewidth',bic.LineWidth,'color',bic.LineColor(70+40*k,:))
                 if k==1; hold on; end
             end
             hold off
@@ -675,6 +698,12 @@ classdef BicAn
         % ------------------
             figure %%%%%%%%%%%%%%%%%%%%%%%%%%%%
             v = [1 1 1];
+            pntstr = cell(1,length(X));
+            dum = bic.fv;
+            if bic.Nseries>1
+                dum = bic.ff;
+                crossplot = true;
+            end
             for k=1:length(X)
                 [b2,B,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(k),X(k),false);
                 %plot(unwrap(angle(Bi))/pi,'o')
@@ -682,19 +711,18 @@ classdef BicAn
                 ylim([1e-10 1e0])
                 %axis tight
                 if k==1; hold on; end
+                pntstr{k} = sprintf('(%3.3f,%3.3f) %sHz',dum(X(k)),dum(Y(k)),bic.ScaleToString(bic.FScale));
             end            
             hold off
             grid on
+            
+            legend(pntstr)
+            
             tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.FScale));
             [~,ystr] = bic.WhichPlot; 
-            bic.PlotLabels({tstr,'xxx'},bic.FontSize,bic.CbarNorth);
-            dum = bic.fv;
-            if bic.Nseries>1
-                dum = bic.ff;
-                crossplot = true;
-            end
-            pntstr = sprintf('(%3.3f,%3.3f) %sHz',dum(X(k)),dum(Y(k)),bic.ScaleToString(bic.FScale));
-            text(0.5,0.5,pntstr,'fontsize',bic.FontSize)
+            bic.PlotLabels({tstr,ystr},bic.FontSize,bic.CbarNorth);
+           
+            %text(0.5,0.5,pntstr,'fontsize',bic.FontSize)
         end % PlotPointOut
 
 
@@ -702,11 +730,12 @@ classdef BicAn
         % ------------------
         % Convenience
         % ------------------
-            bic.InGUI = true;
-            bic.Figure = figure('Position',[100 100 1200 600],...
-                'Resize','off'   ,...
+            bic.Figure = figure('Position',[100 100 1000 600],...
+                'Resize','off',...
                 'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event),...
-                'WindowButtonDownFcn',@(src,event)ClickBispec(bic,event));   
+                'WindowButtonDownFcn',@(src,event)ClickBispec(bic,event));
+                %'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event),...
+                %'WindowButtonDownFcn',@(src,event)ClickBispec(bic,event));   
             bic.Axes = axes('DataAspectRatio',[1 1 1],...
                 'XLimMode','manual','YLimMode','manual',...
                 'DrawMode','fast',...
@@ -730,6 +759,7 @@ classdef BicAn
             img1(:,:,1) = repmat(a,16,1)';
             img1(:,:,2) = repmat(a,16,1);
             img1(:,:,3) = repmat(flipdim(a,2),16,1);
+            
             pth = uipushtool(th,'CData',img1,...
                        'TooltipString','My push tool',...
                        'HandleVisibility','off');
@@ -739,67 +769,96 @@ classdef BicAn
                                 'TooltipString','Your toggle tool',...
                                 'HandleVisibility','off',...
                                 'ClickedCallback',@(src,event)Dum(bic,event));
-
-            bic = bic.RefreshGUI;              
+                            
+            bic.TBHands = [pth, tth];
+            
+            bic.RefreshGUI;       
+            bic.InGUI = true;
                 
-            h = figure('position',[100 100 600 600])
-            a1 = axes('position',[0.1 0.1 0.4 0.4])
-            a2 = axes('position',[0.5 0.5 0.4 0.4])                    
+            %h = figure('position',[100 100 600 600])
+            %a1 = axes('position',[0.1 0.1 0.4 0.4])
+            %a2 = axes('position',[0.5 0.5 0.4 0.4])                    
         end % PlotGUI
         
+        
+        function DumGUI(bic)
+            
+            h = figure('Position',[100 0 600 600],...
+                'Resize','on',...
+                'WindowKeyPressFcn',@SwitchPlot,...
+                'WindowButtonDownFcn',@ClickBispec);
+            
+            th = uitoolbar(h);
+            
+            img1 = rand(16,16,3);
+            pth = uipushtool(th,'CData',img1,...
+                       'TooltipString','My push tool',...
+                       'HandleVisibility','off');
+            % Add a toggle tool to the toolbar
+            img2 = rand(16,16,3);
+            tth = uitoggletool(th,'CData',img2,'Separator','on',...          
+                                'TooltipString','Play',...
+                                'HandleVisibility','off',...
+                                'OnCallback',@PlayButton,...
+                                'OffCallback',@PauseButton);
+                            
+            bic.TBHands = [th, pth, tth];
+            
+            bic.RefreshGUI;       
+            bic.InGUI = true;
+            
+            set(h,'UserData',bic);
+            
+        end
 
-        function bic = RefreshGUI(bic)
+        function RefreshGUI(bic)
         % ------------------
         % Callback for clicks
         % ------------------
-            subplot(2,2,[1 3]);
+            %%%%%%%%   clf
+            ax(1) = subplot(2,2,[1 3]);
                 bic.PlotBispec;
+                set(ax(1),'position',[ 0.1 0.1 0.4 0.7]);
                 
-            subplot(2,2,2);
-                bic.PlotSpectro;
+            ax(2) = subplot(2,2,2);
+            
+                %dum = get(ax(2),'position');
                 
-            subplot(2,2,4);
-                bic.PlotPowerSpec;           
+                bic.PlotSpectro;     
+                
+                if bic.PlotSlice~=0
+                    m = bic.PlotSlice;
+                    dt = bic.SubInt/bic.SampRate;
+                    line([bic.tv(m),bic.tv(m)],[0,bic.fv(end)],'color','white','linewidth',2)
+                    line([bic.tv(m)+dt,bic.tv(m)+dt],[0,bic.fv(end)],'color','white','linewidth',2)
+                end
+                
+                %set(ax(2),'position',dum);
+                set(ax(2),'position',[ 0.65 0.5 0.30 0.3]);
+                
+            ax(3) = subplot(2,2,4);
+                bic.PlotPowerSpec;    
+                set(ax(3),'position',[ 0.65 0.1 0.30 0.25]);
+                
+            tags = {'bispec','spectro','fft'};
+            for k=1:3
+                set(ax(k),'Tag',tags{k});
+            end
         end % Refresh GUI
         
         
-        function Dum(bic,event)
+        function bic = Dum(bic,event)
         % ------------------
         % Callback for clicks
         % ------------------
-            bic.CMap = 'jet';
-            bic.RefreshGUI;
+            fprintf('Note during callback = "%s"\n',bic.Note)
+            bic.CMap = 'cmr';
+            for m=1:2:100
+                bic.PlotSlice = m;
+                bic.RefreshGUI;
+                pause(eps)
+            end
         end 
-        
-        
-        function ClickBispec(bic,event)
-        % ------------------
-        % Callback for clicks
-        % ------------------
-            button = 0;
-            X = []; Y = [];
-            ClickLim = 5;
-            dum = bic.fv;
-            if bic.Nseries>1
-                dum = bic.ff;
-                % Need to subtract something from index now!!!!
-            end
-            while button~=3 && length(X)<ClickLim
-                [x,y,button] = ginput(1);
-                if button==1 && x>=dum(1) && x<=dum(end) && y>=dum(1) && y<=dum(end)
-                    [~,Ix] = min(abs(dum-x));
-                    [~,Iy] = min(abs(dum-y));
-                       X = [X Ix];
-                       Y = [Y Iy];
-                end
-                X
-            end
-            if ~isempty(X)
-                bic.PlotPointOut(X,Y);
-            end
-            
-        end
-        
         
         function bic = MakeMovie(bic)
         % ------------------
@@ -844,34 +903,6 @@ classdef BicAn
             pause(eps);
         end % SizeWarn
         
-                
-        function SwitchPlot(bic,event)
-        % For changing desired plottable
-        % - - - - - - - - 
-            press = event.Character;
-            switch press
-                case {'B','A','R','I','P','M','S'}
-                    if isequal(press,'B') 
-                        bic.PlotType = 'bicoh';
-                    elseif isequal(press,'A') 
-                        bic.PlotType = 'abs';
-                    elseif isequal(press,'R') 
-                        bic.PlotType = 'real';
-                    elseif isequal(press,'I') 
-                        bic.PlotType = 'imag';
-                    elseif isequal(press,'P') 
-                        bic.PlotType = 'angle';
-                    elseif isequal(press,'M') 
-                        bic.PlotType = 'mean';
-                    elseif isequal(press,'S') 
-                        bic.PlotType = 'std';
-                    end
-                    bic.PlotBispec;
-                otherwise
-                    return
-            end
-        end
-
     end % methods
 
 
@@ -1060,23 +1091,27 @@ classdef BicAn
         end % SignalGen
 
              
-        function PlotLabels(strings,fsize,cbarNorth)
+        function cbar = PlotLabels(strings,fsize,cbarNorth)
         % ------------------
         % Convenience function
         % ------------------
+            cbar = [];
             n = length(strings);
             fweight = 'bold';
-            xlabel(strings{1},'fontsize',fsize,'fontweight','bold')
-            if n>1; ylabel(strings{2},'fontsize',fsize,'fontweight','bold'); end;
+            
             if n>2
                 if cbarNorth
-                    cbar = colorbar('location','NorthOutside'); 
+                    cbar = colorbar('location','NorthOutside');                      
                     xlabel(cbar,strings{3},'fontsize',fsize,'fontweight','bold')
                 else
                     cbar = colorbar;
                     ylabel(cbar,strings{3},'fontsize',fsize,'fontweight','bold')
                 end
             end
+            
+            xlabel(strings{1},'fontsize',fsize,'fontweight','bold')
+            if n>1; ylabel(strings{2},'fontsize',fsize,'fontweight','bold'); end;
+            
             set(gca,'YDir','normal',...  YDir is crucial w/ @imagesc!
                 'fontsize',fsize,...
                 'xminortick','on',...
@@ -1194,7 +1229,7 @@ classdef BicAn
         % Demonstration
         % ------------------
             bic = BicAn;
-            [x,t,fS] = bic.TestSignal('3tone');
+            [x,t,fS] = bic.TestSignal('circle');
             %N = 512*1;
             N = length(t);
             x = x(:,1:N);
@@ -1231,5 +1266,116 @@ function out = CheckScales(inscale,val)
         warning('BicAn:scaleFail','\nIncompatable time scale requested.')
         out = inscale; 
     end   
+end
+
+function SwitchPlot(obj,event)
+% For changing desired plottable
+% - - - - - - - - 
+    bic = get(obj,'UserData');
+    press = event.Character;
+    switch press
+        case {'B','A','R','I','P','M','S'}
+            if isequal(press,'B') 
+                bic.PlotType = 'bicoh';
+            elseif isequal(press,'A') 
+                bic.PlotType = 'abs';
+            elseif isequal(press,'R') 
+                bic.PlotType = 'real';
+            elseif isequal(press,'I') 
+                bic.PlotType = 'imag';
+            elseif isequal(press,'P') 
+                bic.PlotType = 'angle';
+            elseif isequal(press,'M') 
+                bic.PlotType = 'mean';
+            elseif isequal(press,'S') 
+                bic.PlotType = 'std';
+            end
+            
+            % Activate!
+            bic.RefreshGUI;
+            set(obj,'UserData',bic);
+            
+        otherwise
+            return
+    end
+end
+
+
+function ClickBispec(obj,~)
+% ------------------
+% Callback for clicks
+% ------------------
+    bic = get(obj,'UserData');
+    switch get(gca,'Tag')
+        case 'spectro'
+            P = get(gca,'CurrentPoint');     % Get point of mouse click    
+            if P(1,1)>=bic.tv(1) && P(1,1)<=bic.tv(end)
+                [~,m] = min(abs(bic.tv-P(1,1))); % Find closest point in time
+                bic.PlotSlice = m;
+                bic.RefreshGUI;
+            else
+                return                       % Somewhere bad on figure
+            end           
+        case 'fft'
+            [val,m] = max(abs(bic.sg(:,1)))  
+            return
+        case 'bispec' 
+            button = 0;
+            X = []; Y = [];
+            ClickLim = 5;
+            dum = bic.fv;
+            if bic.Nseries>1
+                dum = bic.ff;
+                % Need to subtract something from index now!!!!
+            end
+            while button~=3 && length(X)<ClickLim
+                [x,y,button] = ginput(1);
+                if button==1 && x>=dum(1) && x<=dum(end) && y>=dum(1) && y<=dum(end)
+                    [~,Ix] = min(abs(dum-x));
+                    [~,Iy] = min(abs(dum-y));
+                       X = [X Ix];
+                       Y = [Y Iy];
+                end
+            end
+            if ~isempty(X)
+                bic.PlotPointOut(X,Y);
+            end
+    end
+    set(obj,'UserData',bic);
+end
+
+function PlayButton(~,~)
+% ------------------
+% Callback for play
+% ------------------
+    bic = get(gcbf,'UserData');
+    set(gcbo,'TooltipString','Playing... Click to pause');
+    
+    fprintf('Note during callback = "%s"\n',bic.Note)
+    bic.CMap = 'cmr';
+    [~,M,~] = size(bic.sg);
+    
+    bic.IsPlaying = true;
+    set(gcbf,'UserData',bic);
+    
+    while bic.IsPlaying
+        bic = get(gcbf,'UserData');
+        
+        bic.PlotSlice = mod(bic.PlotSlice+20,M)+1;
+        bic.RefreshGUI;
+    
+        set(gcbf,'UserData',bic);
+        pause(eps)
+    end
+    
+end 
+
+function PauseButton(~,~)
+% ------------------
+% Callback for play
+% ------------------
+    bic = get(gcbf,'UserData');
+    bic.IsPlaying = false;
+    set(gcbf,'UserData',bic);
 end
 
