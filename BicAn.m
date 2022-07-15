@@ -55,7 +55,7 @@
 % Anyway: I'm trying to write a nice, clean constructor. [...]
 
 
-classdef BicAn
+classdef BicAn < handle
 % Bicoherence analysis class for DSP
 
     % Globals 
@@ -74,6 +74,7 @@ classdef BicAn
         Raw
         Processed
         History
+        Samples
         SampRate
         FreqRes
         SubInt
@@ -121,50 +122,54 @@ classdef BicAn
         % ------------------
         % Constructor
         % ------------------
-            bic.Raw       = [];
-            bic.Processed = [];
-            bic.History   = ' ';
-            bic.SampRate  = [];
-            bic.FreqRes   = [];
-            bic.SubInt    = 512;
-            bic.Step      = 128;
-            bic.Window    = 'hann';
-            bic.JustFFT   = false;
-            bic.ErrLim    = inf;
-            bic.FScale    = 1;
-            bic.TScale    = 1;
-            bic.Filter    = 'none';
-            bic.Bispectro = false;
-            bic.Smooth    = 1;
-            bic.PlotIt    = false;
-            bic.LilGuy    = 1e-6;
-            bic.SizeWarn  = true;
-            bic.CMap      = 'viridis';
-            bic.PlotType  = 'bicoh';
-            bic.ScaleAxes = 'manual';
-            bic.Verbose   = true;
-            bic.Detrend   = false;
-            bic.ZPad      = true;
-            bic.Note      = ' ';
-            bic.Cross     = false;
-            bic.Vector    = false;
-            bic.StartTime = 0;
-            bic.tv = []; % Time vector
-            bic.fv = []; % Frequency vector
-            bic.ff = []; % Full frequency vector
-            bic.ft = []; % Fourier amplitudes
-            bic.sg = []; % Spectrogram (complex)
-            bic.xs = []; % Cross-spectrum
-            bic.xc = []; % Cross-coherence
-            bic.cs = []; % Coherence spectrum
-            bic.bs = []; % Bispectrum
-            bic.bc = []; % Bicoherence spectrum
-            bic.bp = []; % Biphase proxy
-            bic.bg = []; % Bispectrogram
-            bic.er = []; % Mean & std dev of FFT
-            if nargin~=0
-                bic = bic.ParseInput(varargin);
+            if nargin==0
+                bic.Raw       = [];
+                bic.Processed = [];
+                bic.History   = ' ';
+                bic.Samples   = [];
+                bic.SampRate  = [];
+                bic.FreqRes   = [];
+                bic.SubInt    = 512;
+                bic.Step      = 128;
+                bic.Window    = 'hann';
+                bic.JustFFT   = false;
+                bic.ErrLim    = inf;
+                bic.FScale    = 1;
+                bic.TScale    = 1;
+                bic.Filter    = 'none';
+                bic.Bispectro = false;
+                bic.Smooth    = 1;
+                bic.PlotIt    = false;
+                bic.LilGuy    = 1e-6;
+                bic.SizeWarn  = true;
+                bic.CMap      = 'viridis';
+                bic.PlotType  = 'bicoh';
+                bic.ScaleAxes = 'manual';
+                bic.Verbose   = true;
+                bic.Detrend   = false;
+                bic.ZPad      = true;
+                bic.Note      = ' ';
+                bic.Cross     = false;
+                bic.Vector    = false;
+                bic.StartTime = 0;
+                bic.tv = []; % Time vector
+                bic.fv = []; % Frequency vector
+                bic.ff = []; % Full frequency vector
+                bic.ft = []; % Fourier amplitudes
+                bic.sg = []; % Spectrogram (complex)
+                bic.xs = []; % Cross-spectrum
+                bic.xc = []; % Cross-coherence
+                bic.cs = []; % Coherence spectrum
+                bic.bs = []; % Bispectrum
+                bic.bc = []; % Bicoherence spectrum
+                bic.bp = []; % Biphase proxy
+                bic.bg = []; % Bispectrogram
+                bic.er = []; % Mean & std dev of FFT
+            else
+                bic = ParseInput(varargin);
             end
+
+
         end % BicAn
 
         % "Get properties" functions
@@ -172,53 +177,45 @@ classdef BicAn
             val = bic.SampRate / bic.SubInt;
         end
         function val = get.Samples(bic)
-            if ~isempty(bic.Processed)
-                val = length(bic.Processed);
-            else 
-                val = length(bic.Raw);
-            end
+            val = length(bic.Processed);
         end
 
         % "Set properties" functions
         function bic = set.FreqRes(bic,val)
-            if ~isempty(val)
-                if isequal(val,'max')
-                    bic.FreqRes = bic.MaxRes;
-                elseif val>0 && val<bic.MaxRes
-                    bic.FreqRes = val;
-                else
-                    warning('Bispec:resWarn','Requested resolution not possible... Using maximum.')
-                    bic.FreqRes = bic.MaxRes;
-                end
+            if isequal(val,'max')
+                bic.FreqRes = bic.MaxRes;
+            elseif val>0 && val<bic.MaxRes
+                bic.FreqRes = val;
+            else
+                warning('Bispec:resWarn','Requested resolution not possible... Using maximum.')
+                bic.FreqRes = bic.MaxRes;
             end
         end
 
-        function bic = ParseInput(bic,vars)
+
+        function bic = ParseInput(bic,varargin)
         % ------------------
         % Handle inputs
         % ------------------
         % 
-            N = length(vars);
-            % Should I use properties(...) instead?
-            bic.Raw = vars{1};
-            if N>1
-                options = fieldnames(bic);
-                for i=2:2:N
-                    switch lower(vars{i})            
-                        case lower(options)
+            N = length(varargin);
+            if N>5
+                for i=1:2:(N-5)
+                    switch lower(varargin{i})            
+                        case inputs
                             for j=1:length(options)                       
-                                if isequal(lower(options{j}),lower(vars{i}))
-                                    cl = eval(sprintf('class(bic.%s)',options{j}));                    
-                                    if isequal(cl,class(vars{i+1}))
-                                        eval(sprintf('bic.%s = vars{i+1};',options{j}));
+                                if isequal(inputs{j},lower(varargin{i}))
+                                    cl = eval(sprintf('class(%s)',options{j}));                    
+                                    if isequal(cl,class(varargin{i+1}))
+                                        eval(sprintf('bic.%s = varargin{i+1};',options{j}));
                                     else
                                         warning('BicAn:errOption','\n"%s" must be a %s... Using default value.',...
-                                                    vars{i},cl)
+                                                    varargin{i},cl)
                                     end
                                 end
                             end             
                         otherwise
-                            warning('BicAn:unknownOption','\n"%s" is not a known option...',vars{i})
+                            warning('BicAn:unknownOption','\n"%s" is not a known option...',varargin{i})
                     end
                 end
             end
@@ -226,7 +223,7 @@ classdef BicAn
         end % ParseInput
 
 
-        function bic = ApplyFilter(bic)
+        function bic = Filter(bic)
         % ------------------
         % LP/BP/HP filter
         % ------------------
@@ -310,7 +307,7 @@ classdef BicAn
 
     methods (Static)
 
-        function y = ApplyDetrend(y)
+        function y = Detrend(y)
         % ------------------
         % Remove linear trend
         % ------------------
