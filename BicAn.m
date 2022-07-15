@@ -1,12 +1,5 @@
-%XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-%     ____                 ______             
-%    /\  _`\    __        /\  _  \            
-%    \ \ \L\ \ /\_\    ___\ \ \L\ \    ___    
-%     \ \  _ <'\/\ \  /'___\ \  __ \ /' _ `\  
-%      \ \ \L\ \\ \ \/\ \__/\ \ \/\ \/\ \/\ \ 
-%       \ \____/ \ \_\ \____\\ \_\ \_\ \_\ \_\
-%        \/___/   \/_/\/____/ \/_/\/_/\/_/\/_/
-%                                                                   
+%XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 %/\\\\\\\\\\\\\___________________________/\\\\\\\\\__________________        
 %\/\\\/////////\\\_______________________/\\\\\\\\\\\\\________________       
 %_\/\\\_______\/\\\__/\\\________________/\\\/////////\\\_______________      
@@ -16,23 +9,28 @@
 %    _\/\\\_______\/\\\_\/\\\_\//\\\________\/\\\_______\/\\\_\/\\\___\/\\\_  
 %     _\/\\\\\\\\\\\\\/__\/\\\__\///\\\\\\\\_\/\\\_______\/\\\_\/\\\___\/\\\ 
 %      _\/////////////____\///_____\////////__\///________\///__\///____\///
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+%XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+% Object-oriented bicoherence analysis and signal processing toolbox
+% v4.0 (c) 2022 G.A. Riggs, WVU Dept. of Physics & Astronomy 
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% The Bispectrum
 % B_xyz(f1,f2) = < X(f1)Y(f2)Z(f1+f2)* >, where x,y,z are time series with 
 % corresponding Fourier transforms X,Y,Z, and <...> denotes averaging.
-% - - - - - - - - - - - - - - - - - - - -
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% The (squared) Bicoherence spectrum
 % b^2_xyz(f1,f2) =           |B_xyz(f1,f2)|^2
 %                          --------------------
 %                ( <|X(f1)Y(f2)|^2> <|Z(f1+f2)|^2> + eps ),
 % where eps is a small number meant to prevent 0/0 = NaN catastrophe
-% - - - - - - - - - - - - - - - - - - - -
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Inputs
-% - - - - - - - - - - - - - - - - - - - - 
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % inData    -> time-series {or structure}
-% - - - - - - - - - - - - - - - - - - - - 
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % additional options... (see below for instructions)
 % - - - - - - - - - - - - - - - - - - - - 
 % autoscale -> autoscaling in figures [default :: false]
@@ -64,11 +62,15 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/07/2022 -> 
+% [Worked quite a bit with PyBic in the evening] Made general function to
+% handle time/freq scaling "set" functions. Further progress on GUI. Clicks
+% on bicoherence spectra allow grabbing of multiple points now, ...
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/06/2022 -> Working on GUI support. Want to essentially do the work of 
 % GUIDE with "axes()" calls, and use ginput for point-outs time-resolved 
 % biphases, etc. Learned about toolbar functions ("uitoolbar", ...), so 
 % I'm thinking about implementing the functions as toolbar calls. 
-% [Worked quite a bit with PyBic in the evening]
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/05/2022 -> Added to "pybic" last night. Weekend was fun! Trying to 
 % clean up what I have (i.e., a couple to-dos) before I take some vacation
@@ -108,21 +110,21 @@
 % 6/27/2022 -> First code. Inspired to do O.O. b/c of Phase Space Synth!
 % Honestly think that it will be glove in hand with a project like this.
 % Anyway: I'm trying to write a nice, clean constructor. [...]
-
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 % STUFF TO DO!
 % **Move "WinVec" to dependent properties, that way you can rid yourself of
 %   the dumb double-check for window stuff.
-% **Try to make anonymous function for t/fscale set methods
 % **Fix multi-time-series input to wavelet spec
 % *_Fix input "v" vector! Should be some kind of variable!
-% **Implement sizewarn
-% **Line-out
+% *_Implement sizewarn
+% *_Line-out
 % **Inst. freq/ interpolation
 % *_Cross-bicoherence
 % **set(gcf,'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event)) is
 %   necessary to keep keypresses up-to-date with object...  
 % **Add CalcMean support for cross stuff (just look!)
+% **Fix issue with cross-bicoh and grabbing points
 
 
 classdef BicAn
@@ -130,7 +132,7 @@ classdef BicAn
 
     % Globals 
     properties (Constant)
-        FontSize = 20;
+        FontSize = 18;
         WarnSize = 1000;
         Date     = datestr(now);
     end
@@ -140,10 +142,12 @@ classdef BicAn
         MaxRes
         Samples
         NFreq
+        LineColor
     end
     
     % Private
     properties (Access=private)
+        InGUI     = false;
         RunBicAn  = false;
         NormToNyq = false;
         Nseries   = [];
@@ -237,6 +241,9 @@ classdef BicAn
                 val = length(bic.Raw);
             end
         end
+        function val = get.LineColor(bic)
+            val = eval(sprintf('%s(256)',bic.CMap)); % For coloring the FFT trace
+        end
 
         % ------------------  
         % "Set" functions
@@ -260,20 +267,13 @@ classdef BicAn
             end
         end
         function bic = set.TScale(bic,val)
-            if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
-                bic.TScale = val;
-            else
-                warning('BicAn:scaleFail','\nIncompatable time scale requested.')
-            end                
+            bic.TScale = CheckScales(bic.TScale,val);
         end
         function bic = set.FScale(bic,val)
-            if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
-                bic.FScale = val;
-            else
-                warning('BicAn:scaleFail','\nIncompatable frequency scale requested.')
-            end                
+            bic.FScale = CheckScales(bic.FScale,val);               
         end
-
+        
+        
 
         function bic = ParseInput(bic,vars)
         % ------------------
@@ -333,7 +333,7 @@ classdef BicAn
                         end
                     end 
                 catch inbeef
-                    inbeef
+                    inbeef.message
                 end
 
                 % Do checks on inputs
@@ -385,7 +385,7 @@ classdef BicAn
                 bic = bic.Bicoherence;
                 %bic = bic.CalcMean(15);
                 h = figure('WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event));
-                bic = bic.PlotBispec;
+                bic.PlotBispec;
             end            
             toc
             
@@ -558,11 +558,11 @@ classdef BicAn
             end
 
             bic.mb = bic.mb/Ntrials;
-            bic.sb = bic.sb/(Ntrials-1);
+            bic.sb = sqrt(bic.sb/(Ntrials-1));
         end % CalcMean
 
 
-        function bic = PlotSpectro(bic)
+        function PlotSpectro(bic)
         % ------------------
         % Plot spectrograms
         % ------------------
@@ -582,7 +582,7 @@ classdef BicAn
         end % PlotSpectro
 
                 
-        function bic = PlotBispec(bic)
+        function PlotBispec(bic)
         % ------------------
         % Plot bispectrum
         % ------------------
@@ -599,7 +599,7 @@ classdef BicAn
                     dum = bic.mb;
                     cbarstr = '\langleb^2(f_1,f_2)\rangle';
                 case 'std'
-                    dum = sqrt(bic.sb);
+                    dum = bic.sb;
                     cbarstr = '\sigma_{b^2}(f_1,f_2)';
             end
 
@@ -622,7 +622,7 @@ classdef BicAn
         end % PlotBispec
 
 
-        function bic = PlotConfidence(bic)
+        function PlotConfidence(bic)
         % ------------------
         % Plot confidence interval
         % ------------------
@@ -639,11 +639,17 @@ classdef BicAn
         end % PlotConfidence
         
         
-        function bic = PlotPower(bic)
+        function PlotPower(bic)
         % ------------------
         % Plot power spectrum
         % ------------------
-            semilogy(bic.fv,bic.ft)
+            for k=1:bic.Nseries
+                semilogy(bic.fv,bic.ft(k,:),'linewidth',2,'color',bic.LineColor(70+40*k,:))
+                if k==1; hold on; end
+            end
+            hold off
+            grid on
+            %set(gca,'xticklabels',linspace(bic.fv(1),bic.fv(end)+bic.fv(1),6));
             fstr = sprintf('f [%sHz]',bic.ScaleToString(bic.FScale));
             bic.PlotLabels({fstr,'|P| [arb.]'},bic.FontSize,bic.CbarNorth);
         end % PlotPower
@@ -653,10 +659,11 @@ classdef BicAn
         % ------------------
         % Convenience
         % ------------------
-            bic.Figure = figure('Position',[100 100 600 600],...
+            bic.InGUI = true;
+            bic.Figure = figure('Position',[100 100 1200 600],...
                 'Resize','off'   ,...
                 'WindowKeyPressFcn',@(src,event)SwitchPlot(bic,event),...
-                'WindowButtonDownFcn',@(src,event)ClickPlot(bic,event));   
+                'WindowButtonDownFcn',@(src,event)ClickBispec(bic,event));   
             bic.Axes = axes('DataAspectRatio',[1 1 1],...
                 'XLimMode','manual','YLimMode','manual',...
                 'DrawMode','fast',...
@@ -676,20 +683,21 @@ classdef BicAn
             th = uitoolbar(bic.Figure);
 
             % Add a push tool to the toolbar
-            a = [.20:.05:0.95];
+            a = .20:.05:0.95;
             img1(:,:,1) = repmat(a,16,1)';
             img1(:,:,2) = repmat(a,16,1);
             img1(:,:,3) = repmat(flipdim(a,2),16,1);
             pth = uipushtool(th,'CData',img1,...
                        'TooltipString','My push tool',...
-                       'HandleVisibility','off')
+                       'HandleVisibility','off');
             % Add a toggle tool to the toolbar
             img2 = rand(16,16,3);
             tth = uitoggletool(th,'CData',img2,'Separator','on',...          
-           'TooltipString','Your toggle tool',...
-           'HandleVisibility','off')
+                                'TooltipString','Your toggle tool',...
+                                'HandleVisibility','off',...
+                                'ClickedCallback',@(src,event)Dum(bic,event));
 
-            bic.PlotBispec;
+            bic = bic.RefreshGUI;              
                 
             h = figure('position',[100 100 600 600])
             a1 = axes('position',[0.1 0.1 0.4 0.4])
@@ -697,25 +705,78 @@ classdef BicAn
                     
         end % PlotGUI
         
-        
-        
-        function ClickPlot(bic,event)
+        function bic = RefreshGUI(bic)
         % ------------------
         % Callback for clicks
         % ------------------
-            [x,y,button] = ginput(1)
-            if button==1
-                [~,Ix] = min(abs(bic.fv-x))
-                [~,Iy] = min(abs(bic.fv-y))
-
-                v = [1 1 1];
-                [w,B,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Iy,Ix,false);
-                figure
+            subplot(2,2,[1 3]);
+                bic.PlotBispec;
+                
+            subplot(2,2,2);
+                bic.PlotSpectro;
+                
+            subplot(2,2,4);
+                bic.PlotPower;           
+        end % Refresh GUI
+        
+        
+        function Dum(bic,event)
+        % ------------------
+        % Callback for clicks
+        % ------------------
+            bic.CMap = 'cmr';
+            bic.RefreshGUI;
+        end 
+        
+        
+        function PlotPointOut(bic,X,Y)
+        % ------------------
+        % Plot value of b^2 over time
+        % ------------------
+            figure %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            v = [1 1 1];
+            for k=1:length(X)
+                [b2,B,Bi] = bic.GetBispec(bic.sg,v,bic.LilGuy,Y(k),X(k),false);
                 %plot(unwrap(angle(Bi))/pi,'o')
-                semilogy(abs(Bi))
+                semilogy(bic.tv,abs(Bi),'linewidth',2,'color',bic.LineColor(70+20*k,:))
                 ylim([1e-10 1e0])
                 %axis tight
+                if k==1; hold on; end
+            end            
+            hold off
+            grid on
+            fstr = sprintf('Time [%ss]',bic.ScaleToString(bic.FScale));
+            bic.PlotLabels({fstr,'STRRRRR'},bic.FontSize,bic.CbarNorth);
+        end % PlotPower
+        
+        
+        
+        function ClickBispec(bic,event)
+        % ------------------
+        % Callback for clicks
+        % ------------------
+            button = 0;
+            X = []; Y = [];
+            ClickLim = 5;
+            dum = bic.fv;
+            if bic.Nseries>1
+                dum = bic.ff;
+                % Need to subtract something from index now!!!!
             end
+            while button~=3 && length(X)<ClickLim
+                [x,y,button] = ginput(1);
+                if button==1 && x>=dum(1) && x<=dum(end) && y>=dum(1) && y<=dum(end)
+                    [~,Ix] = min(abs(dum-x));
+                    [~,Iy] = min(abs(dum-y));
+                       X = [X Ix];
+                       Y = [Y Iy];
+                end
+                X
+            end
+            if ~isempty(X)
+                bic.PlotPointOut(X,Y);
+            end
+            
         end
         
         
@@ -1141,3 +1202,13 @@ function LoadBar(m,M)
     ch2 = '_.:"^":.';
     fprintf('\b\b\b\b\b\b%3.0f%%%s%s',100*m/M,ch1(mod(m,8)+1),ch2(mod(m,8)+1))
 end % LoadBar
+
+function out = CheckScales(inscale,val)
+    if sum(val==[-9,-6,-3,-2,-1,0,3,6,9,12])
+        out = val;
+    else
+        warning('BicAn:scaleFail','\nIncompatable time scale requested.')
+        out = inscale; 
+    end   
+end
+
