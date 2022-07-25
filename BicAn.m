@@ -60,6 +60,9 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/18/2022 -> Added loading bar in CalcMean(), line now wider in b2 space.
+% Working on support for "BicOfTime()" i.e., time slices of bicoherence.
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/14/2022 -> Added a bunch of toolbar icons as PNGs (16x16x3).  
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/13/2022 -> Small tweak here and there; cross-coherence in main loop.
@@ -238,6 +241,7 @@ classdef BicAn
         LineWidth = 2;
         FontSize  = 20;
         PlotSlice = 0; 
+        BicOfTime = false;
         
         Verbose   = false;
         Detrend   = false;
@@ -492,7 +496,11 @@ classdef BicAn
         % Main processing loop
         % ------------------
             tic
+            lb = LoadingBar(4,'hsv');
+            
             bic = bic.ApplyZPad;
+            lb = lb.TickBar(1);
+            
             %bic.Processed = bic.Raw;
             switch lower(bic.SpecType)
                 case {'fft','stft','fourier'}
@@ -502,18 +510,23 @@ classdef BicAn
                     
                     bic = bic.SpectroWavelet;
                     bic.SpecType = 'wave';
-            end   
+            end
+            lb = lb.TickBar(2);
+            
             if bic.Cross
                 bic = bic.Coherence;
             end     
+            lb = lb.TickBar(3);
             if ~bic.JustSpec
                 bic = bic.Bicoherence;
             end  
+            lb = lb.TickBar(4);
             fprintf('Complete! Process required %.5f seconds.\n',toc) % Done!
             
             if bic.Verbose
                 disp(bic)
-            end       
+            end    
+            lb.KillBar;
 
             if bic.PlotIt       
                 bic = bic.PlotGUI;
@@ -543,7 +556,7 @@ classdef BicAn
                 case '3tone'
                     [inData,t] = bic.SignalGen(fS,tend,1,f1,0,1,f2,0,1,0,noisy);
                 case 'line'
-                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,1,f2,10,1,1/20,noisy);
+                    [inData,t] = bic.SignalGen(fS,tend,1,f1,0,1,f2,20,1,1/20,noisy);
                 case 'circle'
                     [inData,t] = bic.SignalGen(fS,tend,1,f1,10,1,f2,10,1,1/20,noisy);
                 case 'fast_circle'
@@ -637,7 +650,7 @@ classdef BicAn
         % Cross-spectrum/coh
         % ------------------
             if bic.Nseries~=2
-                error('BicAn:crossSpec','\nCross-coherence requires exactly 2 signals!');
+                warning('BicAn:crossSpec','\nCross-coherence requires exactly 2 signals!');
             else
                 [cspec,crosscoh,coh] = bic.SpecToCoherence(bic.sg,bic.LilGuy);
                 bic.cs = cspec;
@@ -686,8 +699,10 @@ classdef BicAn
             bic.mb = zeros(size(bic.bc));
             bic.sb = zeros(size(bic.bc));
             
+            lb = LoadingBar(Ntrials,'hsv');
             for k=1:Ntrials
-
+                lb = lb.TickBar(k);
+                
                 P = exp( 2i*pi*(2*rand(n,m,r) - 1) );
 
                 if bic.Nseries==1
@@ -701,6 +716,7 @@ classdef BicAn
                 % "Online" algorithm for variance 
                 bic.sb = bic.sb + (dum - old_est).*(dum - bic.mb/k);
             end
+            lb.KillBar;
 
             bic.mb = bic.mb/Ntrials;
             bic.sb = sqrt(bic.sb/(Ntrials-1));
@@ -764,8 +780,22 @@ classdef BicAn
         % ------------------
         % Plot bispectrum
         % ------------------
+        
+            [~,cbarstr] = bic.WhichPlot;
+            if bic.PlotSlice~=0 && bic.BicOfTime
+                dumsg = bic.sg(:,bic.PlotSlice,:);
+                
+                if bic.Nseries==1
+                    dum = bic.SpecToBispec(dumsg,bic.BicVec,bic.LilGuy);
+                else
+                    dum = bic.SpecToCrossBispec(dumsg,bic.BicVec,bic.LilGuy);
+                end
+                
+            else
+                [dum,~] = bic.WhichPlot;
+            end
            
-            [dum,cbarstr] = bic.WhichPlot;
+            %[dum,cbarstr] = bic.WhichPlot;
             if isempty(dum)
                 warnstr = sprintf('"%s" data has not been created!',bic.PlotType);
                 h = warndlg(warnstr,'!! Warning !!');
@@ -1020,10 +1050,10 @@ classdef BicAn
                        'ClickedCallback',@ConfIntButton);
             % BicOfTime
             im = importdata('assets/BicOfTime.png');
-            pth9 = uipushtool(th,'CData',im.cdata,...
+            pth9 = uitoggletool(th,'CData',im.cdata,...
                        'TooltipString','Show bispectral evolution',...
                        'HandleVisibility','off',...
-                       'ClickedCallback',@CalcMeanButton); 
+                       'ClickedCallback',@BicOfTimeButton); 
             % Play/Pause
             im = load('assets/test_pic2.mat');
             tth = uitoggletool(th,'CData',im.M,'Separator','on',...          
@@ -1693,7 +1723,17 @@ function PlotButton(~,~)
 % Callback for CalcMean()
 % ------------------
     bic = get(gcbf,'UserData');
+    figure;
     
+    for k=1:bic.Nseries
+        plot((0:bic.Samples-1)/10^bic.FScale/bic.SampRate,bic.Processed,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
+        if k==1; hold on; end
+    end
+    hold off
+    grid on
+
+    fstr = sprintf('t [%ss]',bic.ScaleToString(bic.TScale));
+    bic.PlotLabels({fstr,'Signal [arb.]'},bic.FontSize,bic.CbarNorth);
     set(gcbf,'UserData',bic);
 end
 
@@ -1703,6 +1743,15 @@ function InterpButton(~,~)
 % ------------------
     bic = get(gcbf,'UserData');
     
+    set(gcbf,'UserData',bic);
+end
+
+function BicOfTimeButton(~,~)
+% ------------------
+% Callback for BicOfTime()
+% ------------------
+    bic = get(gcbf,'UserData');
+    bic.BicOfTime = ~bic.BicOfTime;
     set(gcbf,'UserData',bic);
 end
 
