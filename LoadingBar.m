@@ -1,4 +1,4 @@
-classdef LoadingBar < handle
+classdef LoadingBar 
     
     properties 
         
@@ -28,7 +28,8 @@ classdef LoadingBar < handle
         function lb = TickBar(lb,index)
         % Change bar
             barh(lb.Figure,index,'FaceColor',lb.Color(index,:));
-            axis(lb.Axes,[0 lb.Limit 0.75 1]);
+            xlim(lb.Axes,[1 lb.Limit+1])
+            %axis(lb.Axes,[0 lb.Limit 0.75 1]);
             axis(lb.Axes,'off');
             pause(eps);
         end % TickBar

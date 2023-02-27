@@ -60,6 +60,17 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 2/21/2023 -> Changed default sigma to pi*... instead of 5*...
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 2/09/2023 -> Added flag to PlotPointOut() input to allow inputting freqs 
+% directly, and created "FindMaxInRange" method to find peak bicoherence in
+% some given range x=[FxLo,FxHi] * y=[FyLo,FyHi].
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 1/16/2023 -> Adding "FindMaxAboveLim" method to grab maximum bicoherence
+% above some given frequency
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 1/06/2023 -> Added 'hybrid' option for PlotType which is b^2 * biphase
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 7/18/2022 -> Added loading bar in CalcMean(), line now wider in b2 space.
 % Working on support for "BicOfTime()" i.e., time slices of bicoherence.
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -338,7 +349,7 @@ classdef BicAn
             
         end
         function bic = set.PlotType(bic,val)% Checks for plotter choice
-            opts = {'bicoh ','abs ','real ','imag ','angle ','mean ','std '};
+            opts = {'bicoh ','abs ','real ','imag ','angle ','mean ','std ','hybrid'};
             bic.PlotType = CheckInString(bic.PlotType,val,opts);
         end
         function bic = set.TScale(bic,val)  % Checks for time-scaling
@@ -617,7 +628,8 @@ classdef BicAn
         % Wavelet method
         % ------------------
             if bic.Sigma==0  % Check auto
-               bic.Sigma = 5*bic.Samples/bic.SampRate; 
+               %bic.Sigma = 5*bic.Samples/bic.SampRate; 
+               bic.Sigma = pi*bic.Samples/bic.SampRate; 
             end
 
             if bic.Detrend
@@ -743,15 +755,19 @@ classdef BicAn
             hold off
             
             %%% test this!
-            maxspec = ceil( log10( max(abs(bic.sg(:))) ) );
-            ylim([1e-5 10^maxspec]) 
-            xlim([bic.fv(1)/10^bic.FScale bic.fv(end)/10^bic.FScale])
+            if true
+                maxspec = ceil( log10( max(abs(bic.sg(:))) ) );
+                ylim([1e-5 10^maxspec]) 
+                xlim([bic.fv(1)/10^bic.FScale bic.fv(end)/10^bic.FScale])
+                
+                set(gca,'ytick',exp(-(5:-1:maxspec)*log(10)))
+                set(gca,'xtick',linspace(0,bic.SampRate/2/10^bic.FScale,6));
+            else
+                axis auto
+            end
             grid on
-            
-            set(gca,'ytick',exp(-(5:-1:maxspec)*log(10)))
-            set(gca,'xtick',linspace(0,bic.SampRate/2/10^bic.FScale,6));
             fstr = sprintf('f_n [%sHz]',bic.ScaleToString(bic.FScale));
-            bic.PlotLabels({fstr,'|P|^2 [arb.]'},bic.FontSize,bic.CbarNorth);
+            bic.PlotLabels({fstr,'\langle|P|\rangle^2 [arb.]'},bic.FontSize,bic.CbarNorth);
         end % PlotPowerSpec
 
 
@@ -843,6 +859,9 @@ classdef BicAn
                 case 'std'
                     dum = bic.sb;
                     cbarstr = '\sigma_{b^2}(f_1,f_2)';
+                case 'hybrid'
+                    dum = bic.bc .* angle(bic.bs);
+                    cbarstr = 'b^2(f_1,f_2)\times\beta(f_1,f_2)';
             end
         end
 
@@ -864,11 +883,27 @@ classdef BicAn
         end % PlotConfidence
 
 
-        function PlotPointOut(bic,X,Y)
+        function PlotPointOut(bic,X,Y,IsFreq)
         % ------------------
         % Plot value of b^2 over time
         % ------------------
             figure %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            
+            dum = bic.fv/10^bic.FScale;
+            
+            if length(X)~=length(Y)
+                warning('BicAn:pointOutError','Input vectors must be the same length!')
+            end
+            
+            % Check IsFreq option
+            if nargin==4
+                if IsFreq      
+                    for k=1:length(X)
+                        [~,X(k)] = min(abs( dum - X(k) ));
+                        [~,Y(k)] = min(abs( dum - Y(k) ));
+                    end
+                end
+            end
             
             fLocX = X;
             fLocY = Y;
@@ -919,6 +954,9 @@ classdef BicAn
 
                 pntstr = cell(1,length(X));
                 dumt = bic.tv/10^bic.TScale;
+                
+                Nbins = 20;
+                ang_dist = zeros(length(X),Nbins);
                 for k=1:length(X)
                     
                     % Calculate "point-out"
@@ -926,31 +964,38 @@ classdef BicAn
                     if isempty(Bi)
                         return
                     end
-                    
+
                     switch bic.PlotType
                         case {'abs','imag','real'}
                             umm = eval(sprintf('%s(Bi)',bic.PlotType));
                             if isequal(bic.PlotType,'abs')
                                 semilogy(dumt,umm,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
                             else
-                                plot(dumt,umm,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))
+                                plot(dumt,umm,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:))                                
                             end
                         case 'angle'
                             plot(dumt,unwrap(angle(Bi))/pi,'linewidth',bic.LineWidth,'color',bic.LineColor(50+40*k,:),...
                                 'linestyle','-.','marker','x')
+                            
+                            ang_dist(k,:) = hist(angle(Bi)/pi,Nbins);
+                            %plot(Bi,'linestyle','none','marker','x','color',bic.LineColor(50+40*k,:))
                     end
                     if k==1; hold on; end
                     pntstr{k} = sprintf('(%3.2f,%3.2f) %sHz',dum( fLocX(k) ),dum( fLocY(k) ),bic.ScaleToString(bic.FScale));
                 end            
                 hold off
                 xlim([dumt(1) dumt(end)])
+                %axis([-1 1 -1 1]*0.1)
                 grid on    
 
                 if isequal(bic.PlotType,'angle'); ystr = [ystr '/\pi']; end
                 tstr = sprintf('Time [%ss]',bic.ScaleToString(bic.TScale));
                 bic.PlotLabels({tstr,ystr},bic.FontSize,bic.CbarNorth);
 
-                legend(pntstr,'fontsize',14,'fontweight','bold')                
+                legend(pntstr,'fontsize',14,'fontweight','bold','Location','SouthEast')      
+                
+                %figure
+                %bar(ang_dist')
             end
         end % PlotPointOut
         
@@ -1126,7 +1171,70 @@ classdef BicAn
         % Output movie
         % ------------------
         end % MakeMovie
-
+        
+        
+        function [Ir,Ic,maxVal] = FindMaxInRange(bic,FxLo,FxHi,FyLo,FyHi)
+        % ------------------
+        % Finds maximum bicoherence in given range
+        % Good for tracking a particular feature
+        % ------------------
+        
+        % Transform to desired scaling
+        dum = bic.fv / 10^bic.FScale;
+        vx = (dum>FxLo & dum<FxHi) * 1;
+        vy = (dum>FyLo & dum<FyHi) * 1;
+        
+        vy = vy(1:floor(end/2));
+        
+        bicMask = vy.' * vx;
+        dumBic = bicMask .* bic.bc;
+        [maxVal,Ic] = max(max(dumBic));
+        [~,Ir] = max(max(dumBic.'));
+        
+        fX = dum(Ic);
+        fY = dum(Ir);
+        
+        fprintf('Maximum found! Value is %.4f @ row = %d, column = %d\n',maxVal,Ir,Ic);
+        fprintf('Scaled frequency equivalents are freqX = %.2f, freqY = %.2f\n',fX,fY);
+        end % FindMaxInRange
+        
+        
+        function [Ir,Ic,maxVal] = FindMaxAboveLim(bic,FreqLow)
+        % ------------------
+        % Finds maximum bicoherence above frequency limit
+        % Good for ignoring low-frequency shizz
+        % ------------------
+        
+        % Get maxima in each column
+        [m,I] = max(bic.bc);
+        % Sort in descending order
+        [mSorted,IX] = sort(m,'descend');
+        
+        stillLooking = true;
+        cnt = 1;
+        % Walk down list of maxima, choose the first above limit
+        while stillLooking
+            % Get column of current maximum
+            testCol = IX(cnt);
+            if ( bic.fv(testCol) / 10^bic.FScale ) > FreqLow
+                % Boom!
+                stillLooking = false;
+            else
+                cnt = cnt + 1;
+            end          
+        end
+        
+        maxVal = mSorted(cnt);
+        Ic = testCol;
+        Ir = I(testCol);
+        
+        fX = bic.fv(Ic) / 10^bic.FScale;
+        fY = bic.fv(Ir) / 10^bic.FScale;
+        
+        fprintf('Maximum found! Value is %.4f @ row = %d, column = %d\n',maxVal,Ir,Ic);
+        fprintf('Scaled frequency equivalents are freqX = %.2f, freqY = %.2f\n',fX,fY);
+        
+        end % FindMaxAboveLim
         
         function bic = SizeWarnPrompt(bic,n)
         % ------------------
@@ -1194,6 +1302,7 @@ classdef BicAn
                     B(j,k)  = Bjk;
 
                 end
+                pause(eps)
             end
             B = B/slices;
             fprintf('\b\b^]\n')                   
@@ -1233,6 +1342,7 @@ classdef BicAn
                         B(j+nfreq,k+nfreq)  = Bjk;
                     end
                 end
+                pause(eps)
             end
             B = B/slices;
             fprintf('\b\b^]\n')                    
@@ -1534,10 +1644,10 @@ function SwitchPlot(obj,event)
         if isequal(event.Modifier{1},'shift')
             ind = [];
             if length(event.Character)==1
-                ind = find(event.Character == 'BARIPMS',1);
+                ind = find(event.Character == 'BARIPMSH',1);
             end
             if ~isempty(ind)
-                figs = {'bicoh','abs','real','imag','angle','mean','std'};
+                figs = {'bicoh','abs','real','imag','angle','mean','std','hybrid'};
                 bic.PlotType = figs{ind};
             elseif isequal(event.Key,'rightarrow')
                 bic.PlotSlice = mod(bic.PlotSlice, length(bic.tv)) + 1;
@@ -1592,6 +1702,8 @@ function ClickPlot(obj,~)
                 end
             end
             if ~isempty(X)
+                X
+                Y
                 bic.PlotPointOut(X,Y);
             end
     end
@@ -1760,6 +1872,8 @@ function InspectButton(~,~)
 % Callback for CalcMean()
 % ------------------
     bic = get(gcbf,'UserData');
+    
+    wavplay(bic.Raw,44100/4);
     
     set(gcbf,'UserData',bic);
 end
