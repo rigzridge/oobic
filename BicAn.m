@@ -60,6 +60,12 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 2/27/2023 -> Added full support for tricoherence analysis! Thus, using
+% b = BicAn(...,'trispec',true) calculates trispectrum and tricoherence!
+% New static method (SpecToTrispec), and 2 new class methods (Tricoherence,
+% PlotTrispec) to aid production, plotting, and workflow. Updated PlotLabels()
+% to handle zaxes
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 2/21/2023 -> Changed default sigma to pi*... instead of 5*...
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 2/09/2023 -> Added flag to PlotPointOut() input to allow inputting freqs 
@@ -258,6 +264,7 @@ classdef BicAn
         Detrend   = false;
         ZPad      = false;
         Cross     = false;
+        Trispec   = false;
         Vector    = false;
         TZero     = 0;
         
@@ -268,15 +275,22 @@ classdef BicAn
         tv = []; % Time vector
         fv = []; % Frequency vector
         ff = []; % Full frequency vector
+
         ft = []; % Fourier amplitudes
         sg = []; % Spectrogram (complex)
+
         cs = []; % Cross-spectrum
         cc = []; % Cross-coherence
         cg = []; % Coherence spectrum
+
         bs = []; % Bispectrum
         bc = []; % Bicoherence spectrum
         bp = []; % Biphase proxy
         bg = []; % Bispectrogram
+
+        ts = []; % Trispectrum
+        tc = []; % Tricoherence spectrum
+
         er = []; % Mean & std dev of FFT
         mb = []; % Mean b^2
         sb = []; % Std dev of b^2
@@ -530,7 +544,11 @@ classdef BicAn
             lb = lb.TickBar(3);
             if ~bic.JustSpec
                 bic = bic.Bicoherence;
+                if bic.Trispec
+                    bic = bic.Tricoherence;
+                end
             end  
+
             lb = lb.TickBar(4);
             fprintf('Complete! Process required %.5f seconds.\n',toc) % Done!
             
@@ -698,6 +716,27 @@ classdef BicAn
             bic.bc = b2;
         end % Bicoherence
 
+
+        function bic = Tricoherence(bic)
+        % ------------------
+        % Calculate tricoherence
+        % ------------------       
+            dum = bic.sg; 
+            if isequal(bic.SpecType,'wave')
+                WTrim = 50*2;
+                dum = bic.sg(:,WTrim:end-WTrim,:); 
+            end
+            if bic.Nseries==1
+                bic.BicVec = [1 1 1 1];
+                [t2,T] = bic.SpecToTrispec(dum,bic.BicVec,bic.LilGuy);
+            else
+                warning('BicAn:triSpec','\nTricoherence currently only supports single time-series!');
+            end
+
+            bic.ts = T;
+            bic.tc = t2;
+        end % Tricoherence
+
         
         function bic = CalcMean(bic,Ntrials)
         % ------------------
@@ -838,6 +877,55 @@ classdef BicAn
             
             colormap(bic.CMap);          
         end % PlotBispec
+
+
+        function PlotTrispec(bic,Tval)
+        % ------------------
+        % Plot trispectrum
+        % ------------------
+
+            [~,cbarstr] = bic.WhichPlot;
+            f = bic.fv / 10^bic.FScale;
+            lim = length(f);
+            lim2 = floor(lim/2);
+            lim3 = floor(lim/3);
+
+            max_t = max(max(max(bic.tc)));
+
+            isosurface(f(1:lim),f(1:lim2),f(1:lim3),bic.tc,Tval,angle(bic.ts))
+    
+            xlim([0 f(lim)]); 
+            ylim([0 f(lim)/2]); 
+            zlim([0 f(lim)/3]);
+            % xlabel('Frequency (Hz)'); 
+            % ylabel('Frequency (Hz)'); 
+            % zlabel('Frequency (Hz)'); 
+            
+            line([0 f(lim)/3],[0 f(lim)/3],[0 f(lim)/3], 'linewidth',2.5,'color',0.5*[1 1 1]);
+            
+            line([f(lim) f(lim)/3],[0 f(lim)/3],[0 f(lim)/3], 'linewidth',2.5,'color',0.5*[1 1 1]);
+            
+            line([f(lim)/2 f(lim)/3],[f(lim)/2 f(lim)/3],[0 f(lim)/3], 'linewidth',2.5,'color',0.5*[1 1 1]);
+            line([f(lim)/2 0],[f(lim)/2 0],[0 0], 'linewidth',2.5,'color',0.5*[1 1 1]);
+            line([f(lim)/2 f(lim)],[f(lim)/2 0],[0 0], 'linewidth',2.5,'color',0.5*[1 1 1]);
+            line([0 f(lim)],[0 0],[0 0], 'linewidth',2.5,'color',0.5*[1 1 1]);
+
+            
+            d = {['Max::' num2str(max_t)];...
+                ['Current::' num2str(Tval)]};
+            text(0.85,0.9, d ,...
+                         'units','normalized',...
+                         'color','black');
+
+            fstr1 = sprintf('f_1 [%sHz]',bic.ScaleToString(bic.FScale));
+            fstr2 = sprintf('f_2 [%sHz]',bic.ScaleToString(bic.FScale));
+            fstr3 = sprintf('f_3 [%sHz]',bic.ScaleToString(bic.FScale));
+            bic.PlotLabels({fstr1,fstr2,cbarstr,fstr3},bic.FontSize,bic.CbarNorth);
+            
+            colormap(bic.CMap);
+            grid on
+
+        end % PlotTriSpec
 
 
         function [dum,cbarstr] = WhichPlot(bic)
@@ -1347,6 +1435,59 @@ classdef BicAn
             B = B/slices;
             fprintf('\b\b^]\n')                    
         end % SpecToCrossBispec
+
+
+        function [t2,T] = SpecToTrispec(spec,v,lilguy)
+        % ------------------
+        % Turns spectrogram to t^2
+        % ------------------
+            [nfreq,slices] = size(spec); 
+
+            lim = nfreq;
+
+            T  = zeros(floor(lim/2),lim,floor(lim/3));
+            t2 = zeros(floor(lim/2),lim,floor(lim/3));
+            
+            fprintf('Calculating tricoherence...      ')     
+            for j=1:floor(lim/2)+1
+                LoadBar(j,floor(lim/2)+1);
+                
+                for k=j:lim-j+1
+
+                    %%%for n=k:floor(lim/2)+1
+                    for n=1:floor(lim/3)
+
+                        %%%if j+k+n-1<=lim && j>=n && k>=n
+                        if j+k+n-1<=lim && n<=j && n<=k
+                        %%%if j+k+n-1<=lim
+                    
+                            p1 = spec(k,:,v(1));
+                            p2 = spec(j,:,v(2));
+                            p3 = spec(n,:,v(3));
+                            s  = spec(j+k+n-1,:,v(4));
+
+                            Ti   = p1 .* p2 .* p3 .* conj(s);
+                            e123 = abs(p1 .* p2 .* p3).^2;
+                            e4   = abs(s).^2;  
+
+                            Tjkn = sum(Ti);                    
+                            E123 = sum(e123);             
+                            E4   = sum(e4);                      
+
+                            t2(j,k,n) = ( abs(Tjkn).^2 ) ./ ( E123.*E4 + lilguy ); 
+                            T(j,k,n)  = Tjkn;
+
+                        end
+
+                    end
+
+                end
+                pause(eps)
+            end
+            T = T/slices;
+            fprintf('\b\b^]\n')                   
+        end % SpecToTrispec
+
         
         
         function [w,B,Bi] = GetBispec(spec,v,lilguy,j,k,rando)
@@ -1453,6 +1594,8 @@ classdef BicAn
             n = length(strings);
             fweight = 'bold';
             
+            xlabel(strings{1},'fontsize',fsize,'fontweight',fweight)
+
             if n>2
                 if cbarNorth
                     cbar = colorbar('location','NorthOutside');                      
@@ -1462,9 +1605,9 @@ classdef BicAn
                     ylabel(cbar,strings{3},'fontsize',fsize,'fontweight',fweight)
                 end
             end
-            
-            xlabel(strings{1},'fontsize',fsize,'fontweight',fweight)
+
             if n>1; ylabel(strings{2},'fontsize',fsize,'fontweight',fweight); end;
+            if n>3; zlabel(strings{4},'fontsize',fsize,'fontweight',fweight); end;
             
             set(gca,'YDir','normal',...  YDir is crucial w/ @imagesc!
                 'fontsize',fsize,...
