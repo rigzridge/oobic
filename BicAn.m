@@ -3,11 +3,7 @@
 %    ____                 ______             
 %   /\  _`\    __        /\  _  \                       Version 4.00
 %   \ \ \L\ \ /\_\    ___\ \ \L\ \    ___    
-<<<<<<< HEAD
 %    \ \  _ <'\/\ \  /'___\ \  __ \ /' _ `\        (c) 2022-2023 -- G.Riggs
-=======
-%    \ \  _ <'\/\ \  /'___\ \  __ \ /' _ `\          (c) 2022 -- G.Riggs
->>>>>>> 8306623ffa2800eeec2774eabc37b77e47a13ab5
 %     \ \ \L\ \\ \ \/\ \__/\ \ \/\ \/\ \/\ \ 
 %      \ \____/ \ \_\ \____\\ \_\ \_\ \_\ \_\      WVU Physics & Astronomy
 %       \/___/   \/_/\/____/ \/_/\/_/\/_/\/_/      
@@ -58,22 +54,12 @@
 % smooth    -> smooths FFT by n samples                [default :: 1]
 % tscale    -> scale for plotting time                 [default :: 0]
 % tzero     -> initial time                            [default :: 0]
-<<<<<<< HEAD
-% vector    -> vectorize instead of looping            [default :: True]
-=======
->>>>>>> 8306623ffa2800eeec2774eabc37b77e47a13ab5
 % verbose   -> allow printing of info structure        [default :: True]
 % window    -> select window function                  [default :: 'hann']
 % zpad      -> add zero-padding to end of time-series  [default :: False]
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-<<<<<<< HEAD
-% 7/11/2023 -> Added vectorized approach back in, if bic.Vector==true then
-% loops are avoided and auto-bispectrum is calculated with matrix mult.s 
-% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-=======
->>>>>>> 8306623ffa2800eeec2774eabc37b77e47a13ab5
 % 2/27/2023 -> Added full support for tricoherence analysis! Thus, using
 % b = BicAn(...,'trispec',true) calculates trispectrum and tricoherence!
 % New static method (SpecToTrispec), and 2 new class methods (Tricoherence,
@@ -280,10 +266,6 @@ classdef BicAn
         Cross     = false;
         Trispec   = false;
         Vector    = false;
-<<<<<<< HEAD
-        ZMat      = [];
-=======
->>>>>>> 8306623ffa2800eeec2774eabc37b77e47a13ab5
         TZero     = 0;
         
         Figure    
@@ -902,14 +884,9 @@ classdef BicAn
         % Plot trispectrum
         % ------------------
 
-<<<<<<< HEAD
             %[~,cbarstr] = bic.WhichPlot; 
             % This provides "b^2(f_1,f_2)"! We need...
             cbarstr = 't^2(f_1,f_2,f_3)';
-
-=======
-            [~,cbarstr] = bic.WhichPlot;
->>>>>>> 8306623ffa2800eeec2774eabc37b77e47a13ab5
             f = bic.fv / 10^bic.FScale;
             lim = length(f);
             lim2 = floor(lim/2);
@@ -1054,11 +1031,7 @@ classdef BicAn
                 m = mean(g);
                 plot(b2vec,smooth(cnt/intcnt,10),'linewidth',bic.LineWidth,'color',bic.LineColor(110,:),'marker','x','linestyle','none')
                 hold on
-<<<<<<< HEAD
                 % More accurate distribution... Just more complicated! (Get to it later...)
-=======
-                % More accurate distibution... Just more complicated! (Get to it later...)
->>>>>>> 8306623ffa2800eeec2774eabc37b77e47a13ab5
                 %semilogy(b2vec,(1/m)*exp(-b2vec/m).*(1-b2vec),'linewidth',bic.LineWidth,'color','red'); 
                 plot(b2vec,(1/m)*exp(-b2vec/m),'linewidth',bic.LineWidth,'color','red'); 
 
@@ -1495,7 +1468,6 @@ classdef BicAn
                             p3 = spec(n,:,v(3));
                             s  = spec(j+k+n-1,:,v(4));
 
-<<<<<<< HEAD
                             % See Kravtchenko-Berejnoi et al. [1995]
                             % Ti   = (p1) .* (p2) .* conj(p3) .* conj(s);
                             % e123 = abs((p1) .* (p2) .* conj(p3)).^2;
@@ -1504,11 +1476,6 @@ classdef BicAn
                             Ti   = p1 .* p2 .* p3 .* conj(s);
                             e123 = abs(p1 .* p2 .* p3).^2;
                             e4   = abs(s).^2;
-=======
-                            Ti   = p1 .* p2 .* p3 .* conj(s);
-                            e123 = abs(p1 .* p2 .* p3).^2;
-                            e4   = abs(s).^2;  
->>>>>>> 8306623ffa2800eeec2774eabc37b77e47a13ab5
 
                             Tjkn = sum(Ti);                    
                             E123 = sum(e123);             
