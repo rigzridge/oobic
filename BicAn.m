@@ -33,6 +33,7 @@
 % autoscale -> autoscaling in figures                  [default :: False]
 % bispectro -> computes bispectrogram                  x[default :: False]
 % cbarnorth -> control bolorbar location               [default :: True]
+% calccoi   -> cone of influence                       [default :: False]
 % cmap      -> adjust colormap                         [default :: 'viridis']
 % dealias   -> applies antialiasing (LP) filter        x[default :: False]
 % detrend   -> remove linear trend from data           [default :: False]
@@ -59,6 +60,11 @@
 % zpad      -> add zero-padding to end of time-series  [default :: False]
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 %% Version History
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+% 7/11/2023 -> Incorporated flag for  cone of influence (COI) estimation. 
+% If bic.COI==true, CWT-based spectrograms will first calculate the two-point 
+% impulse spectrum see, e.g., "https://www.mathworks.com/help/wavelet/ug/...
+% boundary-effects-and-the-cone-of-influence.html". We use e^-2 as cutoff
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 2/27/2023 -> Added full support for tricoherence analysis! Thus, using
 % b = BicAn(...,'trispec',true) calculates trispectrum and tricoherence!
@@ -237,6 +243,7 @@ classdef BicAn
         Step      = 128;
         Window    = 'hann';       
         Sigma     = 0;
+        CalcCOI   = false;
         JustSpec  = false;
         SpecType  = 'stft';
         Bispectro = false;
@@ -665,6 +672,14 @@ classdef BicAn
             end 
 
             [CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
+
+            if bic.CalcCOI 
+                nz = zeros(size(bic.Processed));
+                nz(:,1) = 1;
+                nz(:,end) = 1;
+                nzCWT = bic.ApplyCWT(nz,bic.SampRate,bic.Sigma);
+                CWT   = CWT .* ( (abs(nzCWT)/max(nzCWT(:)) ) < exp(-2) );
+            end
 
             bic.tv = t + bic.TZero;
             bic.fv = f;
