@@ -1,9 +1,9 @@
 %XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 %    ____                 ______             
-%   /\  _`\    __        /\  _  \                       Version 4.00
+%   /\  _`\    __        /\  _  \                       Version 4.01
 %   \ \ \L\ \ /\_\    ___\ \ \L\ \    ___    
-%    \ \  _ <'\/\ \  /'___\ \  __ \ /' _ `\        (c) 2022-2023 -- G.Riggs
+%    \ \  _ <'\/\ \  /'___\ \  __ \ /' _ `\        (c) 2018-2023 -- G.Riggs
 %     \ \ \L\ \\ \ \/\ \__/\ \ \/\ \/\ \/\ \ 
 %      \ \____/ \ \_\ \____\\ \_\ \_\ \_\ \_\      WVU Physics & Astronomy
 %       \/___/   \/_/\/____/ \/_/\/_/\/_/\/_/      
@@ -32,8 +32,8 @@
 % - - - - - - - - - - - - - - - - - - - - 
 % autoscale -> autoscaling in figures                  [default :: False]
 % bispectro -> computes bispectrogram                  x[default :: False]
-% cbarnorth -> control bolorbar location               [default :: True]
 % calccoi   -> cone of influence                       [default :: False]
+% cbarnorth -> control colorbar location               [default :: True]
 % cmap      -> adjust colormap                         [default :: 'viridis']
 % dealias   -> applies antialiasing (LP) filter        x[default :: False]
 % detrend   -> remove linear trend from data           [default :: False]
@@ -53,6 +53,7 @@
 % subint    -> subinterval size in samples             [default :: 128]
 % sizewarn  -> warning for matrix size                 x[default :: True]
 % smooth    -> smooths FFT by n samples                [default :: 1]
+% trispec   -> estimates trispectrum                   [default :: False]
 % tscale    -> scale for plotting time                 [default :: 0]
 % tzero     -> initial time                            [default :: 0]
 % verbose   -> allow printing of info structure        [default :: True]
@@ -72,7 +73,7 @@
 % PlotTrispec) to aid production, plotting, and workflow. Updated PlotLabels()
 % to handle zaxes
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-% 2/21/2023 -> Changed default sigma to pi*... instead of 5*...
+% 2/21/2023 -> Changed default sigma to pi*(...) instead of 5*(...)
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 % 2/09/2023 -> Added flag to PlotPointOut() input to allow inputting freqs 
 % directly, and created "FindMaxInRange" method to find peak bicoherence in
@@ -409,7 +410,7 @@ classdef BicAn
 
                     %%%% Should this be global?
                     siglist = {'classic','tone','noisy','2tone','3tone','line','circle','fast_circle',...
-                                'cross_2tone','cross_3tone','cross_circle','demo'};
+                                'quad_couple','coherence','cross_2tone','cross_3tone','cross_circle','demo'};
                     switch dum
                         case 'input'
                             % Start getfile prompt
@@ -674,11 +675,14 @@ classdef BicAn
             [CWT,f,t] = bic.ApplyCWT(bic.Processed,bic.SampRate,bic.Sigma);
 
             if bic.CalcCOI 
-                nz = zeros(size(bic.Processed));
+                nz = zeros(1,length(bic.Processed));
                 nz(:,1) = 1;
                 nz(:,end) = 1;
                 nzCWT = bic.ApplyCWT(nz,bic.SampRate,bic.Sigma);
-                CWT   = CWT .* ( (abs(nzCWT)/max(nzCWT(:)) ) < exp(-2) );
+                for k=1:bic.Nseries
+                    CWT(:,:,k) = CWT(:,:,k) .* ( (abs(nzCWT)/max(abs(nzCWT(:)) ) < exp(-2) );
+                end
+                %CWT = CWT .* ( (abs(nzCWT)/max(abs(nzCWT(:)) ) < exp(-2) );
             end
 
             bic.tv = t + bic.TZero;
@@ -1340,6 +1344,7 @@ classdef BicAn
         fprintf('Scaled frequency equivalents are freqX = %.2f, freqY = %.2f\n',fX,fY);
         
         end % FindMaxAboveLim
+
         
         function bic = SizeWarnPrompt(bic,n)
         % ------------------
