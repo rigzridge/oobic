@@ -258,7 +258,7 @@ classdef BicAn
         SizeWarn  = true;
         BicVec    = [1 1 1];
         
-        PlotIt    = true;
+        PlotIt    = false;
         CMap      = 'viridis';
         CbarNorth = true;
         PlotType  = 'bicoh';
@@ -680,7 +680,7 @@ classdef BicAn
                 nz(:,end) = 1;
                 nzCWT = bic.ApplyCWT(nz,bic.SampRate,bic.Sigma);
                 for k=1:bic.Nseries
-                    CWT(:,:,k) = CWT(:,:,k) .* ( (abs(nzCWT)/max(abs(nzCWT(:)) ) < exp(-2) );
+                    CWT(:,:,k) = CWT(:,:,k) .* ( (abs(nzCWT)/max(abs(nzCWT(:)) )) < exp(-2) );
                 end
                 %CWT = CWT .* ( (abs(nzCWT)/max(abs(nzCWT(:)) ) < exp(-2) );
             end
@@ -969,7 +969,7 @@ classdef BicAn
                     dum = bic.sb;
                     cbarstr = '\sigma_{b^2}(f_1,f_2)';
                 case 'hybrid'
-                    dum = bic.bc .* angle(bic.bs);
+                    dum = bic.bc .* angle(bic.bs) / pi;
                     cbarstr = 'b^2(f_1,f_2)\times\beta(f_1,f_2)';
             end
         end
@@ -1035,7 +1035,7 @@ classdef BicAn
                 fprintf('Calculating distribution for %s...      ',xstr)  
                 for k=1:Ntrials
                     LoadBar(k,Ntrials)
-                    [g(k),~,~] = bic.GetBispec(bic.sg,bic.BicVec,bic.LilGuy,Y(1),X(1),true);
+                    [g(k),~,~] = bic.GetBispec(bic.sg,bic.BicVec,bic.LilGuy,Y(1) - 1 ,X(1) - 1 ,true);
                 end
                 fprintf('\b\b^]\n')  
                 
@@ -1521,6 +1521,9 @@ classdef BicAn
         % ------------------
         % Calculates the bicoherence of a single (f1,f2) value
         % ------------------            
+
+            % Note! This indexes from 0!
+
             [nfreq,slices] = size(spec);
             if abs(j+k) < nfreq
             
@@ -1735,14 +1738,15 @@ classdef BicAn
                 fft_sig = fft_sig(1:nyq);
 
                 % Morlet wavelet in frequency space
-                Psi = @(a) (pi^0.25)*sqrt(2*sigma/a) .*...
-                    exp( -2 * pi^2 * sigma^2 * ( freq_vec/a - f0).^2 );
+                % Will add alphaExp property soon!
+                %%Psi = @(a) (pi^0.25)*sqrt(2*sigma/a) .* exp( -2 * pi^2 * sigma^2 * ( freq_vec/a - f0).^2 );
+                Psi = @(a) (pi^0.25)*sqrt(2*sigma) .* exp( -2 * pi^2 * sigma^2 * ( freq_vec/a - f0).^2 );
 
                 fprintf('Applying CWT...      ')
-                for a=1:nyq  
+                for a=1:nyq-1 
                     LoadBar(a,nyq);
                     % Apply for each scale (read: frequency)
-                    CWT(a,:,k) = ifft(fft_sig.*Psi(a)); 
+                    CWT(a+1,:,k) = ifft(fft_sig.*Psi(a)); 
                 end
                 fprintf('\b\b^]\n')
             end
